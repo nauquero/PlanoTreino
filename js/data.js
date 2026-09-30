@@ -2,9 +2,12 @@
 // Para mudar textos ou exercícios basta editar este ficheiro.
 
 export const PROFILES = {
-  mariana: { name: 'Mariana', emoji: '🍑', goal: '🎯 Objetivo: Hipertrofia' },
-  elia: { name: 'Élia', emoji: '🚴', goal: '🎯 Objetivo: Perda de gordura + Hipertrofia' }
+  mariana: { name: 'Mariana', tone: 'rose', tagline: 'Hipertrofia', goal: 'Objetivo: Hipertrofia' },
+  elia: { name: 'Élia', tone: 'mint', tagline: 'Definição + hipertrofia', goal: 'Objetivo: Perda de gordura + Hipertrofia' }
 };
+
+// Meta mensal de idas ao ginásio (3 por semana). Muda aqui se quiseres outra meta.
+export const GYM_GOAL_PER_MONTH = 12;
 
 // [chave na BD, nome, unidade]
 export const METRICS = [
@@ -64,7 +67,7 @@ export const NUTRITION = {
 
 export const GROUPS = {
   gluteo: {
-    label: '🍑 Glúteo',
+    label: 'Glúteo',
     combo: { cardio: { mariana: 'Escadas — 15 min', elia: 'Bicicleta sentada — 15–20 min' }, abs: 'Prancha — 3x30–45seg', why: 'Mantém o glúteo ativo mesmo depois do treino de força, e a prancha fecha a sessão sem sobrecarregar mais as pernas.' },
     exercises: [
       { name: 'Hip Thrust', effort: 'alto', reps: '6–10 reps · 3–4 séries', tech: 'Pausa de 1–2seg no topo, contrai bem o glúteo antes de descer.', mistakes: ['Arquear demasiado a lombar', 'Não subir a anca até à extensão completa', 'Apoiar o peso nos pés à frente'] },
@@ -76,7 +79,7 @@ export const GROUPS = {
     ]
   },
   pernas: {
-    label: '🦵 Pernas',
+    label: 'Pernas',
     combo: { cardio: { mariana: 'Escadas — 15–20 min', elia: 'Bicicleta sentada — 15–20 min' }, abs: 'Elevação de pernas — 3x12', why: 'Mantém a perna ativa, e a elevação de pernas fecha com o core sem pedir mais das coxas.' },
     exercises: [
       { name: 'Hack Squat', effort: 'alto', reps: '6–10 reps · 3–4 séries', tech: 'Descida controlada (3–4seg).', mistakes: ['Joelhos a colapsar para dentro', 'Amplitude curta'] },
@@ -87,7 +90,7 @@ export const GROUPS = {
     ]
   },
   costas: {
-    label: '🔙 Costas & Tricep',
+    label: 'Costas & Tricep',
     combo: { cardio: { mariana: 'Escadas — 15 min', elia: 'Bicicleta sentada — 15–20 min' }, abs: 'Crunch na máquina — 3x15', why: 'Cardio completo sem pedir mais dos braços, e o crunch fecha a sessão com foco no core.' },
     exercises: [
       { name: 'Lat Pulldown', effort: 'alto', reps: '8–10 reps · 3–4 séries', tech: 'Puxa até ao peito, cotovelos para baixo e para trás.', mistakes: ['Puxar só com os braços', 'Inclinar muito o tronco'] },
@@ -99,7 +102,7 @@ export const GROUPS = {
     ]
   },
   peito: {
-    label: '💪 Peito, Ombro & Bícep',
+    label: 'Peito, Ombro & Bícep',
     combo: { cardio: { mariana: 'Escadas — 15 min', elia: 'Bicicleta sentada — 15–20 min' }, abs: 'Prancha — 3x30–45seg', why: 'Cardio completo, e a prancha fecha com o core sem pedir mais esforço aos braços já cansados.' },
     exercises: [
       { name: 'Chest Press', effort: 'alto', reps: '8–10 reps · 3–4 séries', tech: 'Desce controlado.', mistakes: ['Bloquear os cotovelos no topo'] },
@@ -111,7 +114,7 @@ export const GROUPS = {
     ]
   },
   abs: {
-    label: '🔥 Abs',
+    label: 'Abs',
     exercises: [
       { name: 'Elevação de Pernas', effort: 'medio', reps: '12–15 reps · 3 séries', tech: 'Sobe sem balançar o corpo.', mistakes: ['Balançar o corpo'] },
       { name: 'Crunch na Máquina', effort: 'medio', reps: '15 reps · 3 séries', tech: 'Contrai o abdominal.', mistakes: ['Puxar o pescoço'] },
@@ -119,7 +122,7 @@ export const GROUPS = {
     ]
   },
   cardio: {
-    label: '🚴 Cardio',
+    label: 'Cardio',
     exercises: [
       { name: 'Passadeira', effort: 'medio-alto', reps: '15–20 min', tech: 'Intervalado 1min/1min.', mistakes: ['Agarrar-se aos corrimãos'] },
       { name: 'Escadas', effort: 'medio-alto', reps: '15 min', tech: 'Só para a Mariana.', mistakes: ['Agarrar-se à máquina'] },

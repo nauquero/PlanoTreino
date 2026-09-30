@@ -48,6 +48,11 @@ O site é uma PWA: pode ser instalado no telemóvel e abre em ecrã inteiro, com
 Sem internet a app abre, mas para entrar e guardar dados é preciso ligação (os dados estão na base de dados online).
 O ícone está em `icons/` (podes trocá-lo mantendo os nomes e tamanhos); o cache offline está em `sw.js`.
 
+### Som e visual
+- Os botões fazem um "pop" (gerado no próprio browser, sem ficheiros de áudio). O botão do altifalante, no topo, liga e desliga o som e a preferência fica guardada. Em telemóveis com o modo silencioso ligado o iPhone pode não tocar.
+- O tipo de letra (Poppins) está em `fonts/`, por isso não depende de servidores externos.
+- A meta mensal do calendário (12 idas) está em `js/data.js` (`GYM_GOAL_PER_MONTH`).
+
 ## 3. Testar localmente
 
 Os módulos ES não funcionam com `file://`; usa um servidor local:
