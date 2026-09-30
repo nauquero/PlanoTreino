@@ -4,5 +4,5 @@
 // Enquanto estiverem por preencher, o site corre em "modo demo"
 // (dados guardados só neste dispositivo, qualquer PIN de 4 dígitos entra).
 
-export const SUPABASE_URL = 'COLE_AQUI_O_PROJECT_URL';        // ex: https://abcdxyz.supabase.co
-export const SUPABASE_ANON_KEY = 'COLE_AQUI_A_ANON_PUBLIC_KEY';
+export const SUPABASE_URL = 'https://vcpzlpxwxqvvbcqlhrxi.supabase.co';
+export const SUPABASE_ANON_KEY = 'sb_publishable_w-J3yW3l73fMhMGngCVGnQ_Mgo8aVj1';
