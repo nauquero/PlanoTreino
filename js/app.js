@@ -407,3 +407,7 @@ $('logout-link').addEventListener('click', logout);
     if (saved && PROFILES[saved.profileKey]) await startSession(saved.profileKey, saved.pin);
   } catch { logout(); }
 })();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}

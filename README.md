@@ -38,7 +38,17 @@ update public.profiles set failed_attempts = 0, locked_until = null where id = '
 - Os PINs só existem na base de dados, com hash (bcrypt). Não estão no código nem no repositório.
 - Limitação: um PIN de 4 dígitos é proteção leve (serve para separar perfis, não para dados sensíveis). O bloqueio após 5 falhas dificulta adivinhar.
 
-## 2. Testar localmente
+## 2. Instalar como app (PWA)
+
+O site é uma PWA: pode ser instalado no telemóvel e abre em ecrã inteiro, com ícone próprio.
+
+- **iPhone (Safari):** abre o site → botão Partilhar → **Adicionar ao ecrã principal**.
+- **Android (Chrome):** abre o site → menu ⋮ → **Instalar app** (ou "Adicionar ao ecrã inicial").
+
+Sem internet a app abre, mas para entrar e guardar dados é preciso ligação (os dados estão na base de dados online).
+O ícone está em `icons/` (podes trocá-lo mantendo os nomes e tamanhos); o cache offline está em `sw.js`.
+
+## 3. Testar localmente
 
 Os módulos ES não funcionam com `file://`; usa um servidor local:
 
@@ -48,7 +58,7 @@ npx http-server -p 8080     # ou: python3 -m http.server 8080
 
 Sem o `config.js` preenchido, o site corre em **modo demo** (dados só no browser, qualquer PIN de 4 dígitos entra, aparece um aviso amarelo).
 
-## 3. Publicar no GitHub Pages
+## 4. Publicar no GitHub Pages
 
 1. No repositório: **Settings → Pages → Build and deployment → Source: Deploy from a branch**.
 2. Branch **main**, pasta **/ (root)** → Save.
