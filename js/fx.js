@@ -42,6 +42,13 @@ export function popSuccess() {
   pop(1.5, 0.09);
 }
 
+// fim do descanso: três "pops" ascendentes
+export function popDone() {
+  pop(1.0);
+  pop(1.25, 0.14);
+  pop(1.6, 0.28);
+}
+
 export function haptic(pattern = 10) {
   try { if (navigator.vibrate) navigator.vibrate(pattern); } catch { /* ignora */ }
 }

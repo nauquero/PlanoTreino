@@ -1,7 +1,9 @@
 import { api, isDemo, errorMessage } from './api.js';
-import { PROFILES, METRICS, MEANINGS, EFFORT_LABELS, NUTRITION, GROUPS, GYM_GOAL_PER_MONTH } from './data.js';
+import { PROFILES, METRICS, MEANINGS, EFFORT_LABELS, NUTRITION, GROUPS, GYM_GOAL_PER_MONTH, REST, REST_REFERENCES } from './data.js';
 import { icon } from './icons.js';
-import { burst, haptic, pop, popSuccess, isMuted, setMuted } from './fx.js';
+import { burst, haptic, pop, popSuccess, popDone, isMuted, setMuted } from './fx.js';
+import { summarize, buildStory, MONTH_NAMES } from './progress.js';
+import { createTimer } from './timer.js';
 
 // ---------- estado ----------
 const state = {
@@ -13,8 +15,16 @@ const state = {
   openExercise: null,
   showMeanings: false,
   calMonth: startOfMonth(new Date()),
+  selectedDay: null,
+  editingLog: null,   // id do registo a corrigir
+  editingMeas: null,  // data da medição a corrigir
+  confirm: null,      // 'log:<id>' | 'meas:<data>' à espera de confirmação para apagar
   data: { measurements: [], logs: [], gymDays: new Set() }
 };
+
+// índice dos exercícios por nome (tipo de registo, unidades, etc.)
+const EX = new Map();
+for (const g of Object.values(GROUPS)) for (const ex of g.exercises) EX.set(ex.name, { ex, kind: ex.kind || g.kind });
 
 const SESSION_KEY = 'plano-treino-session';
 
@@ -28,9 +38,11 @@ function esc(s) {
 function pad2(n) { return String(n).padStart(2, '0'); }
 function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
 function isoDate(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; } // data local, não UTC
+function monthKeyOf(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; }
 function fmtDate(iso) { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; }
 function num(v) { return v === null || v === undefined ? '–' : Number(v); }
 function metricDef(key) { return METRICS.find((m) => m[0] === key); }
+const fmtClock = (s) => `${Math.floor(s / 60)}:${pad2(s % 60)}`;
 
 let toastTimer;
 function toast(msg) {
@@ -38,7 +50,7 @@ function toast(msg) {
   el.innerHTML = `${icon('alert', 16)}<span>${esc(msg)}</span>`;
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3400);
 }
 
 function flashOk(el, text) {
@@ -56,15 +68,76 @@ function applyData(out) {
   state.data.gymDays = new Set(out.gym_days);
 }
 
+async function refreshData() {
+  applyData(await api.getData(state.profile, state.pin));
+}
+
 // ---------- Treino ----------
+function fmtLog(l) {
+  const info = EX.get(l.exercise);
+  if (l.minutes !== null && l.minutes !== undefined) {
+    let t = `${num(l.minutes)} min`;
+    if (l.distance !== null && l.distance !== undefined) t += ` · ${num(l.distance)} ${info?.ex.distanceUnit || 'km'}`;
+    if (l.note) t += ` · ${l.note}`;
+    return t;
+  }
+  if (info?.kind === 'hold') return `${num(l.sets)}x${num(l.reps)}s`;
+  return `${num(l.sets)}x${num(l.reps)} · ${num(l.weight)}kg`;
+}
+
+function logFormHtml(ex, kind, editing) {
+  const v = (k) => (editing && editing[k] !== null && editing[k] !== undefined ? esc(editing[k]) : '');
+  const input = (key, ph, label, extra = '') =>
+    `<input type="number" inputmode="decimal" min="0" step="any" placeholder="${ph}" aria-label="${label}" data-log="${key}" value="${v(key)}" ${extra}>`;
+  let fields;
+  if (kind === 'time') {
+    fields = input('minutes', 'Minutos', 'Duração em minutos');
+    if (ex.distanceUnit) fields += input('distance', ex.distanceUnit === 'm' ? 'Metros' : 'Km', `Distância em ${ex.distanceUnit === 'm' ? 'metros' : 'quilómetros'} (opcional)`);
+  } else if (kind === 'hold') {
+    fields = input('sets', 'Séries', 'Séries') + input('reps', 'Segundos', 'Segundos por série');
+  } else {
+    fields = input('sets', 'Séries', 'Séries') + input('reps', 'Reps', 'Repetições') + input('weight', 'Kg', 'Peso em kg (0 se for só o peso do corpo)');
+  }
+  const note = ex.noteLabel
+    ? `<input type="text" maxlength="60" class="log-note" placeholder="${esc(ex.noteLabel)}" aria-label="${esc(ex.noteLabel)}" data-log="note" value="${editing?.note ? esc(editing.note) : ''}">`
+    : '';
+  const date = editing?.date || isoDate(new Date());
+  return `
+    <div class="log-inputs">${fields}</div>
+    ${note}
+    <div class="log-date"><label>Dia</label><input type="date" data-log="date" max="${isoDate(new Date())}" value="${date}" aria-label="Dia do treino"></div>`;
+}
+
+function logRowHtml(l) {
+  const key = `log:${l.id}`;
+  const hasId = l.id !== undefined && l.id !== null;
+  if (hasId && state.confirm === key) {
+    return `<div class="log-entry confirm"><span>Apagar este registo?</span>
+      <span class="le-actions"><button class="mini danger" data-action="del-yes" data-kind="log" data-id="${l.id}">Sim</button><button class="mini" data-action="del-no">Não</button></span></div>`;
+  }
+  return `<div class="log-entry${state.editingLog === l.id ? ' editing' : ''}"><span class="le-date">${fmtDate(l.date)}</span><b class="le-val">${esc(fmtLog(l))}</b>
+    ${hasId ? `<span class="le-actions">
+      <button class="mini-ico" data-action="edit-log" data-id="${l.id}" data-ex="${esc(l.exercise)}" aria-label="Corrigir registo">${icon('pencil', 14)}</button>
+      <button class="mini-ico" data-action="del-log" data-id="${l.id}" aria-label="Apagar registo">${icon('trash', 14)}</button></span>` : ''}</div>`;
+}
+
 function renderTreino() {
   const group = GROUPS[state.group];
   const groupsHtml = Object.entries(GROUPS).map(([key, g]) =>
     `<button class="group-btn${state.group === key ? ' active' : ''}" data-action="group" data-group="${key}">${g.label}</button>`).join('');
 
   const exercisesHtml = group.exercises.map((ex) => {
+    const kind = ex.kind || group.kind;
     const open = state.openExercise === ex.name;
-    const history = state.data.logs.filter((l) => l.exercise === ex.name).slice(0, 4);
+    const history = state.data.logs.filter((l) => l.exercise === ex.name).slice(0, 6);
+    const editing = state.editingLog !== null ? history.find((l) => l.id === state.editingLog) : null;
+    const rest = kind !== 'time' ? REST[ex.effort] : null;
+    const restHtml = rest ? `
+        <div class="rest-box">
+          <div class="rest-head">${icon('timer', 16)}<span>Descanso recomendado: <b>${rest.range}</b></span></div>
+          <button class="rest-start" data-action="rest-start" data-sec="${rest.sec}" data-ex="${esc(ex.name)}">${icon('play', 15)}Iniciar ${fmtClock(rest.sec)}</button>
+          <details class="rest-why"><summary>Porquê este tempo?</summary><p>${esc(rest.why)}</p></details>
+        </div>` : '';
     return `
     <div class="exercise${open ? ' open' : ''}">
       <button class="ex-head" data-action="toggle-ex" data-ex="${esc(ex.name)}" aria-expanded="${open}">
@@ -80,17 +153,16 @@ function renderTreino() {
           <div class="m-title">${icon('alert', 15)}Erros comuns</div>
           <ul>${ex.mistakes.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>
         </div>
-        <div class="log-box">
-          <div class="log-title">${icon('pencil', 15)}Registar sessão de hoje</div>
-          <div class="log-inputs">
-            <input type="number" inputmode="decimal" min="0" step="any" placeholder="Séries" aria-label="Séries" data-log="sets">
-            <input type="number" inputmode="decimal" min="0" step="any" placeholder="Reps" aria-label="Repetições" data-log="reps">
-            <input type="number" inputmode="decimal" min="0" step="any" placeholder="Peso" aria-label="Peso em kg" data-log="weight">
+        ${restHtml}
+        <div class="log-box${editing ? ' is-editing' : ''}" data-kind="${kind}">
+          <div class="log-title">${icon('pencil', 15)}${editing ? 'A corrigir um registo' : 'Registar sessão'}</div>
+          ${logFormHtml(ex, kind, editing)}
+          <div class="log-btns">
+            <button class="log-save" data-action="save-log" data-ex="${esc(ex.name)}">${editing ? 'Atualizar' : 'Guardar'}</button>
+            ${editing ? '<button class="log-cancel" data-action="cancel-edit">Cancelar</button>' : ''}
           </div>
-          <button class="log-save" data-action="save-log" data-ex="${esc(ex.name)}">Guardar</button>
           <div class="saved-flash" data-flash></div>
-          ${history.length ? `<div class="log-history">${history.map((l) =>
-            `<div class="log-entry"><span>${fmtDate(l.date)}</span><b>${num(l.sets)}x${num(l.reps)} · ${num(l.weight)}kg</b></div>`).join('')}</div>` : ''}
+          ${history.length ? `<div class="log-history">${history.map(logRowHtml).join('')}</div>` : ''}
         </div>
       </div></div></div>
     </div>`;
@@ -105,7 +177,14 @@ function renderTreino() {
     </div>`;
   }
 
-  pageEl.innerHTML = `<div class="groups">${groupsHtml}</div>${exercisesHtml}${comboHtml}`;
+  const refsHtml = `
+    <details class="card refs">
+      <summary>${icon('book', 16)}A ciência do descanso entre séries</summary>
+      <p>Os tempos sugeridos dependem do tipo de exercício: quanto mais pesado e multiarticular, mais descanso ajuda a manter a carga nas séries seguintes. São valores de referência gerais, não aconselhamento médico. Ajusta ao teu corpo.</p>
+      <ul>${REST_REFERENCES.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
+    </details>`;
+
+  pageEl.innerHTML = `<div class="groups">${groupsHtml}</div>${exercisesHtml}${comboHtml}${group.kind === 'strength' ? refsHtml : ''}`;
 }
 
 function toggleExercise(head) {
@@ -122,21 +201,40 @@ function toggleExercise(head) {
   setTimeout(() => card.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 120);
 }
 
+function readLogForm(box, kind, exName) {
+  const raw = (k) => { const el = box.querySelector(`[data-log="${k}"]`); return el ? el.value.trim() : ''; };
+  const toNum = (k) => (raw(k) === '' ? null : Number(raw(k)));
+  const entry = { exercise: exName, date: raw('date'), sets: null, reps: null, weight: null, minutes: null, distance: null, note: raw('note') || null };
+  if (!entry.date) return { error: 'Escolhe o dia.' };
+  if (entry.date > isoDate(new Date())) return { error: errorMessage('future_date') };
+  const need = kind === 'time' ? ['minutes'] : kind === 'hold' ? ['sets', 'reps'] : ['sets', 'reps', 'weight'];
+  for (const k of need) {
+    const n = toNum(k);
+    if (n === null || Number.isNaN(n) || n < 0) return { error: kind === 'time' ? 'Diz quantos minutos treinaste.' : 'Preenche séries, reps e peso (0 se for só o peso do corpo).' };
+    entry[k] = n;
+  }
+  if (kind === 'time') {
+    if (!(entry.minutes > 0)) return { error: 'Diz quantos minutos treinaste.' };
+    const dist = toNum('distance');
+    entry.distance = dist !== null && !Number.isNaN(dist) && dist >= 0 ? dist : null;
+  }
+  return { entry };
+}
+
 async function saveLog(btn) {
   const box = btn.closest('.log-box');
-  const [sets, reps, weight] = ['sets', 'reps', 'weight'].map((k) => box.querySelector(`[data-log="${k}"]`).value);
-  if (sets === '' || reps === '' || weight === '' || [sets, reps, weight].some((v) => Number(v) < 0)) {
-    box.querySelector('[data-flash]').textContent = 'Preenche séries, reps e peso.';
-    return;
-  }
-  const entry = { exercise: btn.dataset.ex, date: isoDate(new Date()), sets: Number(sets), reps: Number(reps), weight: Number(weight) };
+  const { entry, error } = readLogForm(box, box.dataset.kind, btn.dataset.ex);
+  if (error) { box.querySelector('[data-flash]').textContent = error; return; }
+  const wasEditing = state.editingLog;
   btn.disabled = true;
   const [cx, cy] = centerOf(btn);
   try {
-    await api.addLog(state.profile, state.pin, entry);
-    state.data.logs.unshift(entry);
+    if (wasEditing !== null) await api.updateLog(state.profile, state.pin, wasEditing, entry);
+    else await api.addLog(state.profile, state.pin, entry);
+    state.editingLog = null;
+    await refreshData();
     render();
-    flashOk(pageEl.querySelector('.exercise.open [data-flash]'), 'Guardado!');
+    flashOk(pageEl.querySelector('.exercise.open [data-flash]'), wasEditing !== null ? 'Registo atualizado!' : 'Guardado! Já está no teu Progresso.');
     burst(cx, cy);
     popSuccess();
     haptic([12, 40, 12]);
@@ -145,6 +243,47 @@ async function saveLog(btn) {
     toast(errorMessage(e.code));
   }
 }
+
+async function confirmDelete(kind, id) {
+  try {
+    if (kind === 'log') await api.deleteLog(state.profile, state.pin, Number(id));
+    else await api.deleteMeasurement(state.profile, state.pin, id);
+    state.confirm = null;
+    if (kind === 'log' && state.editingLog === Number(id)) state.editingLog = null;
+    if (kind === 'meas' && state.editingMeas === id) state.editingMeas = null;
+    await refreshData();
+    render();
+    pop(0.7);
+  } catch (e) {
+    state.confirm = null;
+    render();
+    toast(errorMessage(e.code));
+  }
+}
+
+// ---------- Descanso (temporizador) ----------
+let timerHide = 0;
+function paintTimer(s) {
+  const box = $('rest-timer');
+  clearTimeout(timerHide);
+  if (!s.running && !s.done) { box.hidden = true; box.classList.remove('done'); return; }
+  box.hidden = false;
+  box.classList.toggle('done', !!s.done);
+  const remaining = s.done ? 0 : s.remaining;
+  $('rt-time').textContent = fmtClock(remaining);
+  $('rt-fg').style.strokeDashoffset = 100 - (s.done ? 100 : (remaining / s.total) * 100);
+  $('rt-title').textContent = s.done ? 'Bora! Próxima série' : s.paused ? 'Em pausa' : 'A descansar';
+  $('rt-label').textContent = s.done ? 'Descanso terminado' : s.label;
+  $('rt-pause').innerHTML = icon(s.paused ? 'play' : 'pause', 18);
+  $('rt-pause').hidden = !!s.done;
+  $('rt-add').hidden = !!s.done;
+  if (s.done) timerHide = setTimeout(() => { box.hidden = true; box.classList.remove('done'); }, 8000);
+}
+const rest = createTimer(paintTimer, () => {
+  popDone();
+  haptic([220, 110, 220, 110, 320]);
+  burst(innerWidth / 2, innerHeight - 150, 30);
+});
 
 // ---------- Medição corporal ----------
 function lastMeasurement() { return state.data.measurements[state.data.measurements.length - 1]; }
@@ -201,11 +340,27 @@ function buildOpinion(entries) {
   return paragraphs.join('');
 }
 
+function histRowHtml(e, unit) {
+  const key = `meas:${e.date}`;
+  if (state.confirm === key) {
+    return `<div class="hist-row confirm"><span>Apagar a medição de ${fmtDate(e.date)}?</span>
+      <span class="le-actions"><button class="mini danger" data-action="del-yes" data-kind="meas" data-id="${e.date}">Sim</button><button class="mini" data-action="del-no">Não</button></span></div>`;
+  }
+  const canDelete = state.data.measurements.length > 1;
+  return `<div class="hist-row${state.editingMeas === e.date ? ' editing' : ''}"><span>${fmtDate(e.date)}</span><b>${num(e[state.metric])}${unit}</b>
+    <span class="le-actions">
+      <button class="mini-ico" data-action="edit-meas" data-date="${e.date}" aria-label="Corrigir medição">${icon('pencil', 14)}</button>
+      ${canDelete ? `<button class="mini-ico" data-action="del-meas" data-date="${e.date}" aria-label="Apagar medição">${icon('trash', 14)}</button>` : ''}
+    </span></div>`;
+}
+
 function renderMedicao() {
   const entries = state.data.measurements;
   const last = lastMeasurement();
   if (!last) { pageEl.innerHTML = '<div class="card">Sem medições ainda.</div>'; return; }
   const [, , activeUnit] = metricDef(state.metric);
+  const editing = state.editingMeas ? entries.find((m) => m.date === state.editingMeas) : null;
+  const val = (key) => (editing && editing[key] !== null && editing[key] !== undefined ? ` value="${esc(editing[key])}"` : '');
 
   pageEl.innerHTML = `
     <div class="card">
@@ -227,18 +382,22 @@ function renderMedicao() {
       <h2>Evolução</h2>
       <div class="metric-select">${METRICS.map(([key, label]) => `<button class="metric-btn${state.metric === key ? ' active' : ''}" data-action="metric" data-metric="${key}">${label}</button>`).join('')}</div>
       <div class="chart-wrap">${renderChart(entries, state.metric)}</div>
-      <div class="hist-list">${entries.slice().reverse().map((e) => `<div class="hist-row"><span>${fmtDate(e.date)}</span><b>${num(e[state.metric])}${activeUnit}</b></div>`).join('')}</div>
+      <div class="hist-list">${entries.slice().reverse().map((e) => histRowHtml(e, activeUnit)).join('')}</div>
     </div>
 
-    <div class="card">
-      <h2>Adicionar nova medição</h2>
+    <div class="card${editing ? ' is-editing' : ''}" id="meas-form">
+      <h2>${editing ? `A corrigir a medição de ${fmtDate(editing.date)}` : 'Adicionar nova medição'}</h2>
       <div class="form-row">
-        <div class="field"><label for="m-date">Data</label><input type="date" id="m-date" value="${isoDate(new Date())}"></div>
+        <div class="field"><label for="m-date">Data</label><input type="date" id="m-date" max="${isoDate(new Date())}" value="${editing ? editing.date : isoDate(new Date())}"${editing ? ' disabled' : ''}></div>
       </div>
+      ${editing ? '<p class="edit-hint">Para mudar a data, apaga esta medição e cria uma nova.</p>' : ''}
       <div class="form-row">
-        ${METRICS.map(([key, label, unit]) => `<div class="field"><label for="m-${key}">${label} (${unit || 'nº'})</label><input type="number" inputmode="decimal" step="any" min="0" id="m-${key}" placeholder="${num(last[key])}"></div>`).join('')}
+        ${METRICS.map(([key, label, unit]) => `<div class="field"><label for="m-${key}">${label} (${unit || 'nº'})</label><input type="number" inputmode="decimal" step="any" min="0" id="m-${key}" placeholder="${num(last[key])}"${val(key)}></div>`).join('')}
       </div>
-      <button class="save-btn" data-action="save-measurement">Guardar medição</button>
+      <div class="log-btns">
+        <button class="save-btn" data-action="save-measurement">${editing ? 'Atualizar medição' : 'Guardar medição'}</button>
+        ${editing ? '<button class="log-cancel" data-action="cancel-meas">Cancelar</button>' : ''}
+      </div>
       <div class="saved-flash" id="m-flash"></div>
     </div>`;
 }
@@ -246,22 +405,23 @@ function renderMedicao() {
 async function saveMeasurement(btn) {
   const date = $('m-date').value;
   if (!date) { $('m-flash').textContent = 'Escolhe uma data.'; return; }
-  const last = lastMeasurement();
+  if (date > isoDate(new Date())) { $('m-flash').textContent = errorMessage('future_date'); return; }
+  const base = (state.editingMeas && state.data.measurements.find((m) => m.date === state.editingMeas)) || lastMeasurement();
   const entry = { date };
   for (const [key] of METRICS) {
     const raw = $(`m-${key}`).value;
     if (raw !== '' && Number(raw) < 0) { $('m-flash').textContent = 'Os valores não podem ser negativos.'; return; }
-    entry[key] = raw !== '' ? Number(raw) : last[key]; // campos vazios herdam a última medição
+    entry[key] = raw !== '' ? Number(raw) : base[key]; // campos vazios herdam o valor de referência
   }
+  const wasEditing = !!state.editingMeas;
   btn.disabled = true;
   const [cx, cy] = centerOf(btn);
   try {
     await api.addMeasurement(state.profile, state.pin, entry);
-    const list = state.data.measurements.filter((m) => m.date !== date).concat(entry);
-    list.sort((a, b) => a.date.localeCompare(b.date));
-    state.data.measurements = list;
+    state.editingMeas = null;
+    await refreshData();
     render();
-    flashOk($('m-flash'), 'Medição guardada!');
+    flashOk($('m-flash'), wasEditing ? 'Medição atualizada!' : 'Medição guardada!');
     burst(cx, cy, 44);
     popSuccess();
     haptic([12, 40, 12]);
@@ -286,52 +446,91 @@ function renderAlimentacao() {
     </div>`;
 }
 
-// ---------- Calendário ----------
-const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-
-function monthCount() {
-  const prefix = `${state.calMonth.getFullYear()}-${pad2(state.calMonth.getMonth() + 1)}`;
-  let n = 0;
-  for (const d of state.data.gymDays) if (d.startsWith(prefix)) n++;
-  return n;
-}
+// ---------- Progresso (resumo mensal + calendário) ----------
 const ringOffset = (n) => 100 - Math.min(n / GYM_GOAL_PER_MONTH, 1) * 100;
 
-function paintCalSummary(bump) {
-  const n = monthCount();
-  const label = $('cal-count');
-  if (!label) return;
-  label.textContent = `${n} ida${n !== 1 ? 's' : ''} ao ginásio este mês`;
-  const numEl = $('ring-num');
-  numEl.textContent = n;
-  if (bump) { numEl.classList.remove('bump'); void numEl.offsetWidth; numEl.classList.add('bump'); }
-  $('ring-fg').style.strokeDashoffset = ringOffset(n);
+// dias de treino do mês = dias marcados ∪ dias com registos
+function trainedCount(key) {
+  const s = new Set([...state.data.gymDays].filter((d) => d.startsWith(key)));
+  state.data.logs.forEach((l) => { if (l.date.startsWith(key)) s.add(l.date); });
+  return s.size;
 }
 
-function paintDay(iso, on, celebrate) {
-  const b = pageEl.querySelector(`.cal-day[data-date="${iso}"]`);
-  if (!b) return;
-  b.classList.toggle('done', on);
-  b.setAttribute('aria-pressed', String(on));
-  b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop');
-  if (on && celebrate) { const [cx, cy] = centerOf(b); burst(cx, cy, 26); }
+const VERDICT_ICON = { empty: 'sparkles', starting: 'sparkles', flying: 'flame', rising: 'trend', steady: 'leaf', dip: 'sparkles' };
+const TREND_ICON = { up: 'arrow-up', down: 'arrow-down', flat: 'minus', new: 'sparkles' };
+
+function dayDetailHtml(iso) {
+  if (!iso) return '<div class="dd-empty">Toca num dia para ver o que fizeste.</div>';
+  const logs = state.data.logs.filter((l) => l.date === iso);
+  const marked = state.data.gymDays.has(iso) || logs.length > 0;
+  const [, m, d] = iso.split('-').map(Number);
+  return `
+    <div class="dd-head"><b>${d} de ${MONTH_NAMES[m - 1].toLowerCase()}</b><span class="dd-chip${marked ? ' on' : ''}">${marked ? 'Dia de treino' : 'Sem treino'}</span></div>
+    ${logs.length
+      ? logs.map((l) => `<div class="dd-log"><span>${esc(l.exercise)}</span><b>${esc(fmtLog(l))}</b></div>`).join('')
+      : '<div class="dd-empty">Sem registos neste dia.</div>'}
+    ${logs.length
+      ? '<div class="dd-note">Marcado automaticamente pelos teus registos.</div>'
+      : `<button class="dd-toggle" data-action="toggle-day" data-date="${iso}">${marked ? 'Desmarcar dia de treino' : 'Marcar como dia de treino'}</button>`}`;
 }
 
-function renderCalendario() {
+function renderProgresso() {
   const year = state.calMonth.getFullYear(), month = state.calMonth.getMonth();
+  const key = `${year}-${pad2(month + 1)}`;
+  const today = isoDate(new Date());
+  const isCurrent = key >= monthKeyOf(new Date());
+  const p = PROFILES[state.profile];
+
+  if (state.selectedDay && !state.selectedDay.startsWith(key)) state.selectedDay = null;
+  if (!state.selectedDay && isCurrent) state.selectedDay = today;
+
+  const sum = summarize({ logs: state.data.logs, gymDays: state.data.gymDays, measurements: state.data.measurements }, key, GYM_GOAL_PER_MONTH);
+  const story = buildStory(sum, { name: p.name, focus: p.focus });
+  const count = sum.sessions;
+
+  const chips = [`<span class="s-chip">${icon('calendar', 14)}${count}/${GYM_GOAL_PER_MONTH} treinos</span>`];
+  if (sum.volume > 0) chips.push(`<span class="s-chip">${icon('dumbbell', 14)}${sum.volume.toLocaleString('pt-PT')} kg de volume</span>`);
+  if (sum.minutes > 0) chips.push(`<span class="s-chip">${icon('activity', 14)}${sum.minutes} min de cardio/desporto</span>`);
+
+  const highlightsHtml = sum.highlights.length ? `
+    <div class="card">
+      <h2>Evolução de carga</h2>
+      <div class="hl-list">${sum.highlights.map((h) => `
+        <div class="hl-row ${h.trend}">
+          <span class="hl-ico">${icon(TREND_ICON[h.trend], 16)}</span>
+          <span class="hl-name">${esc(h.name)}</span>
+          <span class="hl-val">${h.trend === 'new' ? `Estreia: ${esc(h.to)}` : `${esc(h.from)} → ${esc(h.to)}${h.deltaKg ? ` <em>(${h.deltaKg > 0 ? '+' : ''}${h.deltaKg}kg)</em>` : ''}`}</span>
+        </div>`).join('')}</div>
+      <p class="footnote">Comparamos a carga estimada (peso × repetições, fórmula de Epley) com o melhor registo do mês anterior. Se não houver mês anterior, comparamos o início e o fim do mês.</p>
+    </div>` : '';
+
+  const logDays = new Set(state.data.logs.map((l) => l.date));
   const startDow = (new Date(year, month, 1).getDay() + 6) % 7; // semana começa à segunda
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const today = isoDate(new Date());
-  const count = monthCount();
-
   let cells = '<div class="cal-day empty"></div>'.repeat(startDow);
   for (let d = 1; d <= daysInMonth; d++) {
-    const iso = `${year}-${pad2(month + 1)}-${pad2(d)}`;
-    const done = state.data.gymDays.has(iso);
-    cells += `<button class="cal-day${done ? ' done' : ''}${iso === today ? ' today' : ''}" data-action="toggle-day" data-date="${iso}" aria-pressed="${done}">${d}</button>`;
+    const iso = `${key}-${pad2(d)}`;
+    const done = state.data.gymDays.has(iso) || logDays.has(iso);
+    const future = iso > today;
+    cells += `<button class="cal-day${done ? ' done' : ''}${iso === today ? ' today' : ''}${iso === state.selectedDay ? ' sel' : ''}${future ? ' future' : ''}" data-action="select-day" data-date="${iso}" aria-pressed="${done}"${future ? ' disabled aria-label="Ainda não chegou"' : ''}>${d}</button>`;
   }
 
   pageEl.innerHTML = `
+    <div class="card month-nav">
+      <button data-action="cal-prev" aria-label="Mês anterior">${icon('chevron-left', 18)}</button>
+      <div class="month-label">${MONTH_NAMES[month]} ${year}</div>
+      <button data-action="cal-next" aria-label="Mês seguinte"${isCurrent ? ' disabled' : ''}>${icon('chevron-right', 18)}</button>
+    </div>
+
+    <div class="card story ${sum.verdict}">
+      <div class="story-head"><span class="story-badge">${icon(VERDICT_ICON[sum.verdict], 22)}</span><h2 class="story-title">${esc(story.title)}</h2></div>
+      ${story.lines.map((l) => `<p>${esc(l)}</p>`).join('')}
+      <div class="story-chips">${chips.join('')}</div>
+      <div class="story-mission">${icon('target', 16)}<span>${esc(story.mission)}</span></div>
+    </div>
+
+    ${highlightsHtml}
+
     <div class="card">
       <div class="cal-summary">
         <div class="ring">
@@ -346,37 +545,49 @@ function renderCalendario() {
           <div class="cal-goal">Meta: ${GYM_GOAL_PER_MONTH} idas por mês</div>
         </div>
       </div>
-      <div class="cal-header">
-        <button data-action="cal-prev" aria-label="Mês anterior">${icon('chevron-left', 18)}</button>
-        <div class="month-label">${MONTH_NAMES[month]} ${year}</div>
-        <button data-action="cal-next" aria-label="Mês seguinte">${icon('chevron-right', 18)}</button>
-      </div>
       <div class="cal-grid">
         ${['S', 'T', 'Q', 'Q', 'S', 'S', 'D'].map((d) => `<div class="cal-dow">${d}</div>`).join('')}
         ${cells}
       </div>
+      <div class="day-detail" id="day-detail">${dayDetailHtml(state.selectedDay)}</div>
     </div>`;
+}
+
+function selectDay(el) {
+  state.selectedDay = el.dataset.date;
+  pageEl.querySelectorAll('.cal-day.sel').forEach((x) => x.classList.remove('sel'));
+  el.classList.add('sel');
+  $('day-detail').innerHTML = dayDetailHtml(state.selectedDay);
 }
 
 async function toggleDay(iso) {
   const had = state.data.gymDays.has(iso);
+  if (!had && iso > isoDate(new Date())) { toast(errorMessage('future_date')); return; }
+  const key = iso.slice(0, 7);
+  const before = trainedCount(key);
   const setDay = (on) => { if (on) state.data.gymDays.add(iso); else state.data.gymDays.delete(iso); };
-  // atualização otimista, sem redesenhar a página (mantém as animações); reverte se falhar
+  const celebrate = (on) => {
+    const fg = $('ring-fg');
+    if (fg) { // anima o anel do valor antigo para o novo
+      fg.style.strokeDashoffset = ringOffset(before);
+      void fg.getBoundingClientRect();
+      fg.style.strokeDashoffset = ringOffset(trainedCount(key));
+      const n = $('ring-num'); n.classList.remove('bump'); void n.offsetWidth; n.classList.add('bump');
+    }
+    const b = pageEl.querySelector(`.cal-day[data-date="${iso}"]`);
+    if (b) { b.classList.add('pop'); if (on) { const [cx, cy] = centerOf(b); burst(cx, cy, 26); } }
+  };
+  // atualização otimista; reverte se a base de dados recusar
   setDay(!had);
-  paintDay(iso, !had, true);
-  paintCalSummary(true);
+  render();
+  celebrate(!had);
   if (!had) { popSuccess(); haptic([10, 30, 10]); }
   try {
     const out = await api.toggleGymDay(state.profile, state.pin, iso);
-    if (out.on !== !had) { // o servidor tinha o estado contrário
-      setDay(out.on);
-      paintDay(iso, out.on, false);
-      paintCalSummary(false);
-    }
+    if (out.on !== !had) { setDay(out.on); render(); }
   } catch (e) {
     setDay(had);
-    paintDay(iso, had, false);
-    paintCalSummary(false);
+    render();
     toast(errorMessage(e.code));
   }
 }
@@ -386,7 +597,7 @@ const PAGES = [
   ['treino', 'Treino', 'dumbbell'],
   ['medicao', 'Medição', 'activity'],
   ['alimentacao', 'Alimentação', 'leaf'],
-  ['calendario', 'Calendário', 'calendar']
+  ['progresso', 'Progresso', 'trend']
 ];
 
 function renderNav() {
@@ -400,7 +611,7 @@ function renderNav() {
   nav.querySelectorAll('.nav-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
 }
 
-const RENDERERS = { treino: renderTreino, medicao: renderMedicao, alimentacao: renderAlimentacao, calendario: renderCalendario };
+const RENDERERS = { treino: renderTreino, medicao: renderMedicao, alimentacao: renderAlimentacao, progresso: renderProgresso };
 
 function render(fresh = false) {
   renderNav();
@@ -409,25 +620,44 @@ function render(fresh = false) {
   if (fresh) [...pageEl.children].forEach((el, i) => el.style.setProperty('--n', i));
 }
 
+function scrollToAndFocus(selector) {
+  const el = pageEl.querySelector(selector);
+  if (!el) return;
+  setTimeout(() => { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 60);
+}
+
 function onClick(ev) {
   const el = ev.target.closest('[data-action]');
-  if (!el) return;
+  if (!el || el.disabled) return;
   const d = el.dataset;
   switch (d.action) {
     case 'page':
       if (state.page === d.page) return;
       state.page = d.page;
+      state.confirm = null;
       window.scrollTo({ top: 0, behavior: 'smooth' });
       break;
-    case 'group': state.group = d.group; state.openExercise = null; break;
+    case 'group': state.group = d.group; state.openExercise = null; state.editingLog = null; state.confirm = null; break;
     case 'toggle-ex': toggleExercise(el); return;
     case 'metric': state.metric = d.metric; break;
     case 'toggle-meanings': state.showMeanings = !state.showMeanings; render(); return;
-    case 'cal-prev': state.calMonth = new Date(state.calMonth.getFullYear(), state.calMonth.getMonth() - 1, 1); break;
-    case 'cal-next': state.calMonth = new Date(state.calMonth.getFullYear(), state.calMonth.getMonth() + 1, 1); break;
+    case 'cal-prev': state.calMonth = new Date(state.calMonth.getFullYear(), state.calMonth.getMonth() - 1, 1); state.selectedDay = null; break;
+    case 'cal-next': state.calMonth = new Date(state.calMonth.getFullYear(), state.calMonth.getMonth() + 1, 1); state.selectedDay = null; break;
+    case 'select-day': selectDay(el); return;
     case 'toggle-day': toggleDay(d.date); return;
     case 'save-log': saveLog(el); return;
     case 'save-measurement': saveMeasurement(el); return;
+    case 'edit-log':
+      state.editingLog = Number(d.id); state.openExercise = d.ex; state.confirm = null;
+      render(); scrollToAndFocus('.log-box.is-editing'); return;
+    case 'cancel-edit': state.editingLog = null; render(); return;
+    case 'del-log': state.confirm = `log:${d.id}`; render(); return;
+    case 'edit-meas': state.editingMeas = d.date; state.confirm = null; render(); scrollToAndFocus('#meas-form'); return;
+    case 'cancel-meas': state.editingMeas = null; render(); return;
+    case 'del-meas': state.confirm = `meas:${d.date}`; render(); return;
+    case 'del-no': state.confirm = null; render(); return;
+    case 'del-yes': confirmDelete(d.kind, d.id); return;
+    case 'rest-start': rest.start(Number(d.sec), d.ex); return;
     default: return;
   }
   render(true); // mudança de secção/grupo/métrica/mês: entrada animada
@@ -515,25 +745,26 @@ function showPin(profileKey) {
   $('pin-back').onclick = () => { cleanup(); showChoices(); };
 }
 
-function greeting() {
-  const h = new Date().getHours();
-  return h < 12 ? 'Bom dia' : h < 20 ? 'Boa tarde' : 'Boa noite';
-}
-
 async function startSession(profileKey, pin) {
   const out = await api.getData(profileKey, pin);
   const p = PROFILES[profileKey];
   state.profile = profileKey;
   state.pin = pin;
   applyData(out);
-  Object.assign(state, { page: 'treino', group: 'gluteo', metric: 'weight', openExercise: null, showMeanings: false, calMonth: startOfMonth(new Date()) });
+  Object.assign(state, {
+    page: 'treino', group: 'gluteo', metric: 'weight', openExercise: null, showMeanings: false,
+    calMonth: startOfMonth(new Date()), selectedDay: null, editingLog: null, editingMeas: null, confirm: null
+  });
   try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ profileKey, pin })); } catch { /* ignora */ }
 
   $('avatar').className = `avatar ${p.tone}`;
   $('avatar').textContent = p.name[0];
-  $('header-eyebrow').textContent = `${greeting()}, ${p.name}`;
-  $('demo-banner').innerHTML = `${icon('alert', 16)}<span>Modo demo: os dados ficam só neste dispositivo. Liga o Supabase (ver README) para os guardar online.</span>`;
-  $('demo-banner').hidden = !isDemo;
+  $('header-eyebrow').textContent = `Hey, sweetie (aka ${p.name})`;
+  const outdated = !isDemo && out.version !== 2;
+  $('demo-banner').innerHTML = `${icon('alert', 16)}<span>${outdated
+    ? 'Há novidades! Falta atualizar a base de dados para ativar: apagar/corrigir registos, outros desportos e datas seguras. Segue as instruções do ficheiro supabase/migracao-2.sql.'
+    : 'Modo demo: os dados ficam só neste dispositivo. Liga o Supabase (ver README) para os guardar online.'}</span>`;
+  $('demo-banner').hidden = !(isDemo || outdated);
   $('app').hidden = false;
   render(true);
   window.scrollTo(0, 0);
@@ -544,6 +775,7 @@ async function startSession(profileKey, pin) {
 }
 
 function logout() {
+  rest.stop();
   state.profile = null;
   state.pin = null;
   try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignora */ }
@@ -573,6 +805,15 @@ $('sound-toggle').addEventListener('click', () => {
   if (!isMuted()) pop(1.3);
 });
 paintSound();
+
+// controlos do temporizador flutuante
+$('rt-close').innerHTML = icon('x', 18);
+$('rt-close').addEventListener('click', () => rest.stop());
+$('rt-add').addEventListener('click', () => rest.add(15));
+$('rt-pause').addEventListener('click', () => {
+  const paused = $('rt-title').textContent === 'Em pausa';
+  if (paused) rest.resume(); else rest.pause();
+});
 
 // "pop" em todos os botões (pointerdown = resposta imediata e desbloqueia o áudio no telemóvel)
 document.addEventListener('pointerdown', (e) => {

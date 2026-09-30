@@ -31,6 +31,12 @@ Para mudar um PIN mais tarde, repete o passo 3. Para desbloquear um perfil (5 te
 update public.profiles set failed_attempts = 0, locked_until = null where id = 'mariana';
 ```
 
+### Atualizar a base de dados (quando há novidades)
+Quando saírem funcionalidades novas que precisem da base de dados, corre o ficheiro indicado no SQL Editor (cola tudo e **Run**). É seguro repetir e **não apaga dados nem PINs**.
+- `supabase/migracao-2.sql`: apagar/corrigir registos e medições, desportos (minutos/distância), dia de treino automático a partir dos registos e bloqueio de datas futuras.
+
+Se o site mostrar a faixa amarela "Há novidades! Falta atualizar a base de dados", é porque falta correr este ficheiro.
+
 ### Como é protegido
 - O URL e a chave `anon` **são públicos** (ficam no código do site). Não dão acesso a nada por si só.
 - As tabelas têm RLS ligado e sem policies: a chave pública **não consegue** ler nem escrever nelas.
@@ -47,6 +53,11 @@ O site é uma PWA: pode ser instalado no telemóvel e abre em ecrã inteiro, com
 
 Sem internet a app abre, mas para entrar e guardar dados é preciso ligação (os dados estão na base de dados online).
 O ícone está em `icons/` (podes trocá-lo mantendo os nomes e tamanhos); o cache offline está em `sw.js`.
+
+### Funcionalidades
+- **Treino:** 7 grupos (incluindo *Outros desportos*: natação, corrida, caminhada, ténis, aulas de grupo). Cada registo tem dia (só hoje ou passado) e pode ser corrigido ou apagado.
+- **Descanso:** temporizador flutuante com tempo recomendado por tipo de exercício (150 s / 120 s / 90 s / 60 s), com explicação e referências científicas em `js/data.js` (`REST`, `REST_REFERENCES`).
+- **Progresso:** resumo mensal (carga, volume, minutos, evolução) com tom bem-humorado, e calendário. Cada registo marca automaticamente o dia; dias futuros não podem ser marcados. Textos em `js/progress.js`.
 
 ### Som e visual
 - Os botões fazem um "pop" (gerado no próprio browser, sem ficheiros de áudio). O botão do altifalante, no topo, liga e desliga o som e a preferência fica guardada. Em telemóveis com o modo silencioso ligado o iPhone pode não tocar.
