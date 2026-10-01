@@ -1260,10 +1260,11 @@ function showLogin() {
     err.textContent = 'A verificar…';
     try {
       const out = await api.login(number, pass);
+      if (out.profile.app && out.profile.app !== 'butts') throw Object.assign(new Error('app'), { code: 'wrong_app' });
       try { localStorage.setItem(LAST_NUMBER_KEY, number); } catch { /* ignora */ }
       await startSession(out.profile, pass);
     } catch (ex) {
-      err.textContent = ex.code === 'server'
+      err.textContent = ex.code === 'wrong_app' ? 'Esta conta não é desta app.' : ex.code === 'server'
         ? 'Não foi possível entrar. Se acabaste de atualizar a app, falta correr o ficheiro supabase/atualizar.sql no Supabase.'
         : errorMessage(ex.code);
       form.classList.remove('shake'); void form.offsetWidth; form.classList.add('shake');
