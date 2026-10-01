@@ -9,7 +9,8 @@ const ERRORS = {
   network: 'Sem ligação à base de dados. Verifica a internet e tenta de novo.',
   future_date: 'Essa data ainda não aconteceu. Só podes registar hoje ou dias passados.',
   not_found: 'Esse registo já não existe. Atualiza a página.',
-  last_measurement: 'Tem de ficar pelo menos uma medição guardada.'
+  duplicate: 'Já existe um exercício com esse nome neste grupo.',
+  invalid: 'Esse nome não é válido. Usa entre 2 e 40 letras.'
 };
 export const errorMessage = (code) => ERRORS[code] || 'Ocorreu um erro. Tenta de novo.';
 
@@ -37,24 +38,25 @@ async function rpc(fn, args) {
 }
 
 const remote = {
-  login: (profile, pin) => rpc('login', { p_profile: profile, p_pin: pin }),
+  login: (number, pin) => rpc('login_user', { p_number: number, p_pin: pin }),
   getData: (profile, pin) => rpc('get_data', { p_profile: profile, p_pin: pin }),
   addMeasurement: (profile, pin, entry) => rpc('add_measurement', { p_profile: profile, p_pin: pin, p_entry: entry }),
   deleteMeasurement: (profile, pin, date) => rpc('delete_measurement', { p_profile: profile, p_pin: pin, p_date: date }),
   addLog: (profile, pin, entry) => rpc('add_log', { p_profile: profile, p_pin: pin, p_entry: entry }),
   updateLog: (profile, pin, id, entry) => rpc('update_log', { p_profile: profile, p_pin: pin, p_id: id, p_entry: entry }),
   deleteLog: (profile, pin, id) => rpc('delete_log', { p_profile: profile, p_pin: pin, p_id: id }),
-  toggleGymDay: (profile, pin, day) => rpc('toggle_gym_day', { p_profile: profile, p_pin: pin, p_day: day })
+  toggleGymDay: (profile, pin, day) => rpc('toggle_gym_day', { p_profile: profile, p_pin: pin, p_day: day }),
+  setSleep: (profile, pin, entry) => rpc('set_sleep', { p_profile: profile, p_pin: pin, p_entry: entry }),
+  deleteSleep: (profile, pin, day) => rpc('delete_sleep', { p_profile: profile, p_pin: pin, p_day: day }),
+  addCustomExercise: (profile, pin, entry) => rpc('add_custom_exercise', { p_profile: profile, p_pin: pin, p_entry: entry }),
+  deleteCustomExercise: (profile, pin, id) => rpc('delete_custom_exercise', { p_profile: profile, p_pin: pin, p_id: id })
 };
 
 // ---------- Modo demo (localStorage) ----------
 // Só existe para veres o site a funcionar antes de ligares o Supabase.
 // Não valida PINs (não há PINs no código do site).
 
-const INITIAL = {
-  mariana: { weight: 52.9, bmi: 19.9, body_fat: 15.9, sub_fat: 14.9, visceral: 2, water: 57.7, muscle: 41.8, bone: 2.67, bmr: 1331 },
-  elia: { weight: 68, bmi: 26.6, body_fat: 35.7, sub_fat: 32.2, visceral: 9, water: 44.1, muscle: 41.1, bone: 2.62, bmr: 1314 }
-};
+const INITIAL = { weight: 60, bmi: 22, body_fat: 25, sub_fat: 22, visceral: 4, water: 52, muscle: 40, bone: 2.5, bmr: 1350 };
 
 const demoKey = (profile) => `plano-treino-demo-${profile}`;
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -63,7 +65,9 @@ function todayIso() { const d = new Date(); return `${d.getFullYear()}-${pad2(d.
 function demoLoad(profile) {
   let d = null;
   try { const raw = localStorage.getItem(demoKey(profile)); if (raw) d = JSON.parse(raw); } catch { /* ignora */ }
-  if (!d) d = { measurements: [{ date: '2026-09-29', ...INITIAL[profile] }], logs: [], gym_days: [] };
+  if (!d) d = { measurements: [{ date: '2026-09-29', ...INITIAL }], logs: [], gym_days: [], sleep: [], custom_exercises: [] };
+  d.sleep = d.sleep || [];
+  d.custom_exercises = d.custom_exercises || [];
   let next = d.logs.reduce((m, l) => Math.max(m, l.id || 0), 0);
   d.logs.forEach((l) => { if (!l.id) l.id = ++next; });
   return d;
@@ -72,14 +76,16 @@ function demoSave(profile, data) {
   try { localStorage.setItem(demoKey(profile), JSON.stringify(data)); } catch { /* ignora */ }
 }
 const noFuture = (date) => { if (date > todayIso()) throw new ApiError('future_date'); };
-const norm = (e) => ({ sets: null, reps: null, weight: null, minutes: null, distance: null, note: null, ...e });
+const norm = (e) => ({ sets: null, reps: null, weight: null, minutes: null, distance: null, note: null, sets_json: null, ...e });
 
 const demo = {
-  async login(profile, pin) {
-    if (!/^\d{4}$/.test(pin)) throw new ApiError('invalid_pin');
-    return { ok: true };
+  async login(number, pin) {
+    if (!/^\d{1,6}$/.test(String(number).trim()) || String(pin).length < 4) throw new ApiError('invalid_pin');
+    const n = String(number).trim();
+    const focus = n === '1' ? 'hipertrofia' : n === '2' ? 'definicao' : 'saude';
+    return { ok: true, profile: { id: `demo-${n}`, name: `Convidada ${n}`, focus, cardio: n === '1' ? 'escadas' : 'bicicleta' } };
   },
-  async getData(profile) { return { ok: true, version: 2, ...demoLoad(profile) }; },
+  async getData(profile) { return { ok: true, version: 3, ...demoLoad(profile) }; },
   async addMeasurement(profile, pin, entry) {
     noFuture(entry.date);
     const d = demoLoad(profile);
@@ -89,7 +95,6 @@ const demo = {
   },
   async deleteMeasurement(profile, pin, date) {
     const d = demoLoad(profile);
-    if (d.measurements.length <= 1) throw new ApiError('last_measurement');
     if (!d.measurements.some((m) => m.date === date)) throw new ApiError('not_found');
     d.measurements = d.measurements.filter((m) => m.date !== date);
     demoSave(profile, d);
@@ -127,6 +132,36 @@ const demo = {
     d.gym_days = on ? d.gym_days.concat(day).sort() : d.gym_days.filter((x) => x !== day);
     demoSave(profile, d);
     return { ok: true, on };
+  },
+  async setSleep(profile, pin, entry) {
+    noFuture(entry.day);
+    const d = demoLoad(profile);
+    d.sleep = d.sleep.filter((x) => x.day !== entry.day).concat({ day: entry.day, hours: entry.hours, quality: entry.quality }).sort((a, b) => b.day.localeCompare(a.day));
+    demoSave(profile, d);
+    return { ok: true };
+  },
+  async deleteSleep(profile, pin, day) {
+    const d = demoLoad(profile);
+    if (!d.sleep.some((x) => x.day === day)) throw new ApiError('not_found');
+    d.sleep = d.sleep.filter((x) => x.day !== day);
+    demoSave(profile, d);
+    return { ok: true };
+  },
+  async addCustomExercise(profile, pin, entry) {
+    const d = demoLoad(profile);
+    const name = String(entry.name || '').trim();
+    if (name.length < 2 || name.length > 40) throw new ApiError('invalid');
+    if (d.custom_exercises.some((c) => c.group_key === entry.group_key && c.name.toLowerCase() === name.toLowerCase())) throw new ApiError('duplicate');
+    d.custom_exercises.push({ id: d.custom_exercises.reduce((m, c) => Math.max(m, c.id), 0) + 1, group_key: entry.group_key, name, kind: entry.kind, effort: entry.effort, distance_unit: entry.distance_unit || null });
+    demoSave(profile, d);
+    return { ok: true };
+  },
+  async deleteCustomExercise(profile, pin, id) {
+    const d = demoLoad(profile);
+    if (!d.custom_exercises.some((c) => c.id === id)) throw new ApiError('not_found');
+    d.custom_exercises = d.custom_exercises.filter((c) => c.id !== id);
+    demoSave(profile, d);
+    return { ok: true };
   }
 };
 

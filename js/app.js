@@ -1,16 +1,19 @@
 import { api, isDemo, errorMessage } from './api.js';
-import { PROFILES, METRICS, MEANINGS, EFFORT_LABELS, NUTRITION, GROUPS, GYM_GOAL_PER_MONTH, REST, REST_REFERENCES } from './data.js';
+import {
+  FOCUS, TONES, METRICS, MEANINGS, EFFORT_LABELS, NUTRITION, GROUPS, TABS, WARMUP_STRETCH, GYM_GOAL_PER_MONTH, REST,
+  WATER, PROTEIN_G_PER_KG, FOOD_GUIDE, FOOD_LIMIT
+} from './data.js';
 import { icon } from './icons.js';
 import { burst, haptic, pop, popSuccess, popDone, isMuted, setMuted } from './fx.js';
-import { summarize, buildStory, MONTH_NAMES } from './progress.js';
+import { summarize, buildStory, rowsOfLog, bestSet, bestHold, MONTH_NAMES } from './progress.js';
 import { createTimer } from './timer.js';
 
 // ---------- estado ----------
 const state = {
-  profile: null,
+  user: null,         // { id, name, focus, cardio, tone }
   pin: null,
   page: 'treino',
-  group: 'gluteo',
+  group: 'pernas',
   metric: 'weight',
   openExercise: null,
   showMeanings: false,
@@ -18,15 +21,18 @@ const state = {
   selectedDay: null,
   editingLog: null,   // id do registo a corrigir
   editingMeas: null,  // data da medição a corrigir
-  confirm: null,      // 'log:<id>' | 'meas:<data>' à espera de confirmação para apagar
-  data: { measurements: [], logs: [], gymDays: new Set() }
+  confirm: null,      // 'log:<id>' | 'meas:<data>' | 'sleep:<data>' | 'cex:<id>' à espera de confirmação para apagar
+  addingExercise: false,
+  sleepDate: null,
+  data: { measurements: [], logs: [], gymDays: new Set(), sleep: [], custom: [] }
 };
 
-// índice dos exercícios por nome (tipo de registo, unidades, etc.)
-const EX = new Map();
-for (const g of Object.values(GROUPS)) for (const ex of g.exercises) EX.set(ex.name, { ex, kind: ex.kind || g.kind });
+// exercícios do plano, por nome
+const BUILTIN = new Map();
+for (const [key, g] of Object.entries(GROUPS)) for (const ex of g.exercises) BUILTIN.set(ex.name, { ex, kind: ex.kind || g.kind, group: key });
 
 const SESSION_KEY = 'plano-treino-session';
+const LAST_NUMBER_KEY = 'plano-treino-last-number';
 
 // ---------- helpers ----------
 const $ = (id) => document.getElementById(id);
@@ -40,9 +46,16 @@ function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
 function isoDate(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; } // data local, não UTC
 function monthKeyOf(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; }
 function fmtDate(iso) { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; }
+function fmtShort(iso) { const [, m, d] = iso.split('-'); return `${d}/${m}`; }
 function num(v) { return v === null || v === undefined ? '–' : Number(v); }
+function ptNum(v, dec = 1) { return Number(v).toLocaleString('pt-PT', { maximumFractionDigits: dec }); }
 function metricDef(key) { return METRICS.find((m) => m[0] === key); }
 const fmtClock = (s) => `${Math.floor(s / 60)}:${pad2(s % 60)}`;
+const today = () => isoDate(new Date());
+const uid = () => state.user.id;
+
+function hash(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0; return h; }
+const toneFor = (name) => TONES[hash(name) % TONES.length];
 
 let toastTimer;
 function toast(msg) {
@@ -50,7 +63,7 @@ function toast(msg) {
   el.innerHTML = `${icon('alert', 16)}<span>${esc(msg)}</span>`;
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 3400);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3600);
 }
 
 function flashOk(el, text) {
@@ -66,46 +79,76 @@ function applyData(out) {
   state.data.measurements = out.measurements;
   state.data.logs = out.logs;
   state.data.gymDays = new Set(out.gym_days);
+  state.data.sleep = out.sleep || [];
+  state.data.custom = out.custom_exercises || [];
 }
 
 async function refreshData() {
-  applyData(await api.getData(state.profile, state.pin));
+  applyData(await api.getData(uid(), state.pin));
 }
 
-// ---------- Treino ----------
-function fmtLog(l) {
-  const info = EX.get(l.exercise);
+// ---------- exercícios (planeados + personalizados) ----------
+function customToEx(c) {
+  return {
+    name: c.name, effort: c.effort, kind: c.kind, custom: true, id: c.id,
+    reps: c.kind === 'time' ? 'Registo por tempo' : c.kind === 'hold' ? 'Isométrico (segundos)' : 'Força (séries e repetições)',
+    tech: 'Exercício criado por ti.', mistakes: [], distanceUnit: c.distance_unit || undefined
+  };
+}
+
+function exercisesOf(groupKey) {
+  const custom = state.data.custom.filter((c) => c.group_key === groupKey).map(customToEx);
+  return [...GROUPS[groupKey].exercises, ...custom];
+}
+
+function exInfo(name) {
+  if (BUILTIN.has(name)) return BUILTIN.get(name);
+  const c = state.data.custom.find((x) => x.name === name);
+  return c ? { ex: customToEx(c), kind: c.kind } : null;
+}
+
+// ---------- registos de séries ----------
+function logChips(l) {
   if (l.minutes !== null && l.minutes !== undefined) {
+    const info = exInfo(l.exercise);
     let t = `${num(l.minutes)} min`;
     if (l.distance !== null && l.distance !== undefined) t += ` · ${num(l.distance)} ${info?.ex.distanceUnit || 'km'}`;
     if (l.note) t += ` · ${l.note}`;
-    return t;
+    return `<span class="set-chip wide">${esc(t)}</span>`;
   }
-  if (info?.kind === 'hold') return `${num(l.sets)}x${num(l.reps)}s`;
-  return `${num(l.sets)}x${num(l.reps)} · ${num(l.weight)}kg`;
+  const rows = rowsOfLog(l);
+  if (!rows.length) return '';
+  const kind = exInfo(l.exercise)?.kind;
+  return rows.map((r) => `<span class="set-chip">${kind === 'hold' ? `${r.reps} s` : `${r.weight !== null ? `${ptNum(r.weight, 2)} kg × ` : ''}${r.reps}`}</span>`).join('');
 }
 
-function logFormHtml(ex, kind, editing) {
-  const v = (k) => (editing && editing[k] !== null && editing[k] !== undefined ? esc(editing[k]) : '');
-  const input = (key, ph, label, extra = '') =>
-    `<input type="number" inputmode="decimal" min="0" step="any" placeholder="${ph}" aria-label="${label}" data-log="${key}" value="${v(key)}" ${extra}>`;
-  let fields;
+function setRowHtml(i, kind, row, hint) {
+  const v = (x) => (x !== null && x !== undefined ? ` value="${esc(x)}"` : '');
+  const reps = `<input type="number" inputmode="decimal" min="0" step="any" data-set="reps" placeholder="${kind === 'hold' ? 'Segundos' : (hint?.reps ?? 'Reps')}" aria-label="${kind === 'hold' ? 'Segundos' : 'Repetições'} da série ${i + 1}"${v(row?.reps)}>`;
+  const weight = kind === 'hold' ? '' : `<input type="number" inputmode="decimal" min="0" step="any" data-set="weight" placeholder="${hint?.weight ?? 'Kg'}" aria-label="Peso em kg da série ${i + 1}"${v(row?.weight)}>`;
+  return `<div class="set-row"><span class="set-n">Série ${i + 1}</span>${reps}${weight}</div>`;
+}
+
+function logFormHtml(ex, kind, editing, history) {
+  const input = (key, ph, label, value = '') =>
+    `<input type="number" inputmode="decimal" min="0" step="any" placeholder="${ph}" aria-label="${label}" data-log="${key}" value="${esc(value)}">`;
+  let fields = '';
   if (kind === 'time') {
-    fields = input('minutes', 'Minutos', 'Duração em minutos');
-    if (ex.distanceUnit) fields += input('distance', ex.distanceUnit === 'm' ? 'Metros' : 'Km', `Distância em ${ex.distanceUnit === 'm' ? 'metros' : 'quilómetros'} (opcional)`);
-  } else if (kind === 'hold') {
-    fields = input('sets', 'Séries', 'Séries') + input('reps', 'Segundos', 'Segundos por série');
+    fields = `<div class="log-inputs">${input('minutes', 'Minutos', 'Duração em minutos', editing?.minutes ?? '')}`;
+    if (ex.distanceUnit) fields += input('distance', ex.distanceUnit === 'm' ? 'Metros' : 'Km', `Distância em ${ex.distanceUnit === 'm' ? 'metros' : 'quilómetros'} (opcional)`, editing?.distance ?? '');
+    fields += '</div>';
+    if (ex.noteLabel) fields += `<input type="text" maxlength="60" class="log-note" placeholder="${esc(ex.noteLabel)}" aria-label="${esc(ex.noteLabel)}" data-log="note" value="${editing?.note ? esc(editing.note) : ''}">`;
   } else {
-    fields = input('sets', 'Séries', 'Séries') + input('reps', 'Reps', 'Repetições') + input('weight', 'Kg', 'Peso em kg (0 se for só o peso do corpo)');
+    // séries do dia: 3 linhas por defeito (mais as que precisares com "+ série")
+    const lastRows = history[0] ? rowsOfLog(history[0]) : [];
+    const rows = editing ? rowsOfLog(editing) : [];
+    const count = Math.max(3, rows.length);
+    fields = `<div class="set-rows" data-sets>${Array.from({ length: count }, (_, i) => setRowHtml(i, kind, rows[i], editing ? null : lastRows[i] || lastRows[lastRows.length - 1])).join('')}</div>
+      <button type="button" class="add-set" data-action="add-set">${icon('plus', 15)}série</button>`;
   }
-  const note = ex.noteLabel
-    ? `<input type="text" maxlength="60" class="log-note" placeholder="${esc(ex.noteLabel)}" aria-label="${esc(ex.noteLabel)}" data-log="note" value="${editing?.note ? esc(editing.note) : ''}">`
-    : '';
-  const date = editing?.date || isoDate(new Date());
-  return `
-    <div class="log-inputs">${fields}</div>
-    ${note}
-    <div class="log-date"><label>Dia</label><input type="date" data-log="date" max="${isoDate(new Date())}" value="${date}" aria-label="Dia do treino"></div>`;
+  const date = editing?.date || today();
+  return `${fields}
+    <div class="log-date"><label>Dia</label><input type="date" data-log="date" max="${today()}" value="${date}" aria-label="Dia do treino"></div>`;
 }
 
 function logRowHtml(l) {
@@ -115,48 +158,111 @@ function logRowHtml(l) {
     return `<div class="log-entry confirm"><span>Apagar este registo?</span>
       <span class="le-actions"><button class="mini danger" data-action="del-yes" data-kind="log" data-id="${l.id}">Sim</button><button class="mini" data-action="del-no">Não</button></span></div>`;
   }
-  return `<div class="log-entry${state.editingLog === l.id ? ' editing' : ''}"><span class="le-date">${fmtDate(l.date)}</span><b class="le-val">${esc(fmtLog(l))}</b>
+  return `<div class="log-entry${state.editingLog === l.id ? ' editing' : ''}"><span class="le-date">${fmtDate(l.date)}</span><span class="le-val">${logChips(l)}</span>
     ${hasId ? `<span class="le-actions">
       <button class="mini-ico" data-action="edit-log" data-id="${l.id}" data-ex="${esc(l.exercise)}" aria-label="Corrigir registo">${icon('pencil', 14)}</button>
       <button class="mini-ico" data-action="del-log" data-id="${l.id}" aria-label="Apagar registo">${icon('trash', 14)}</button></span>` : ''}</div>`;
 }
 
+// ---------- Treino ----------
+function planCard(plan, cls) {
+  return `<details class="card plan ${cls}">
+    <summary>${icon(cls === 'warm' ? 'flame' : 'leaf', 16)}<span>${esc(plan.title)}</span><em>${esc(plan.time)}</em></summary>
+    ${plan.rule ? `<p class="plan-rule">${esc(plan.rule)}</p>` : ''}
+    <ul>${plan.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>
+  </details>`;
+}
+
+function tabsHtml() {
+  const active = TABS.find((t) => t.key === state.group || (t.children || []).includes(state.group));
+  const top = TABS.map((t) => {
+    const target = t.children ? (t.children.includes(state.group) ? state.group : t.children[0]) : t.key;
+    return `<button class="group-btn${t === active ? ' active' : ''}" data-action="group" data-group="${target}">${t.label}</button>`;
+  }).join('');
+  const sub = active?.children
+    ? `<div class="groups sub">${active.children.map((k) => `<button class="group-btn sub${k === state.group ? ' active' : ''}" data-action="group" data-group="${k}">${GROUPS[k].label}</button>`).join('')}</div>`
+    : '';
+  return `<div class="groups">${top}</div>${sub}`;
+}
+
+function addExerciseHtml() {
+  if (!state.addingExercise) {
+    return `<div class="card add-ex"><button class="add-ex-btn" data-action="add-ex-open">${icon('plus', 18)}Adicionar exercício</button></div>`;
+  }
+  const g = GROUPS[state.group];
+  return `<form class="card add-ex-form" id="add-ex-form" autocomplete="off">
+    <h2>Novo exercício em ${esc(g.label)}</h2>
+    <div class="field"><label for="cx-name">Nome</label><input type="text" id="cx-name" maxlength="40" placeholder="ex: Leg Press foco quadríceps" required></div>
+    <div class="field"><label for="cx-kind">Como queres registar?</label>
+      <select id="cx-kind">
+        <option value="strength">Força: séries, repetições e peso</option>
+        <option value="time">Tempo: minutos (e distância)</option>
+        <option value="hold">Isométrico: segundos</option>
+      </select></div>
+    <div class="field"><label for="cx-effort">Esforço (define o descanso sugerido)</label>
+      <select id="cx-effort">
+        <option value="alto">Alto: pesado e multiarticular</option>
+        <option value="medio-alto" selected>Médio-alto</option>
+        <option value="medio">Médio: mais localizado</option>
+        <option value="baixo">Baixo: músculos pequenos</option>
+      </select></div>
+    <div class="field" id="cx-dist-row" hidden><label for="cx-dist">Distância</label>
+      <select id="cx-dist"><option value="">Sem distância</option><option value="km">Quilómetros</option><option value="m">Metros</option></select></div>
+    <div class="log-btns">
+      <button type="submit" class="save-btn" data-action="add-ex-save">Guardar exercício</button>
+      <button type="button" class="log-cancel" data-action="add-ex-cancel">Cancelar</button>
+    </div>
+    <div class="saved-flash" id="cx-flash"></div>
+  </form>`;
+}
+
 function renderTreino() {
   const group = GROUPS[state.group];
-  const groupsHtml = Object.entries(GROUPS).map(([key, g]) =>
-    `<button class="group-btn${state.group === key ? ' active' : ''}" data-action="group" data-group="${key}">${g.label}</button>`).join('');
+  const plan = WARMUP_STRETCH[state.group];
+  const exercises = exercisesOf(state.group);
 
-  const exercisesHtml = group.exercises.map((ex) => {
+  const exercisesHtml = exercises.map((ex) => {
     const kind = ex.kind || group.kind;
     const open = state.openExercise === ex.name;
-    const history = state.data.logs.filter((l) => l.exercise === ex.name).slice(0, 6);
+    const all = state.data.logs.filter((l) => l.exercise === ex.name);
+    const history = all.slice(0, 8);
     const editing = state.editingLog !== null ? history.find((l) => l.id === state.editingLog) : null;
     const rest = kind !== 'time' ? REST[ex.effort] : null;
+    const best = kind === 'strength' ? bestSet(all) : kind === 'hold' ? bestHold(all) : null;
+    const bestHtml = best
+      ? `<div class="best-line">${icon('star', 15)}<span>Melhor carga: <b>${kind === 'hold' ? `${best.seconds} s` : `${ptNum(best.weight, 2)} kg × ${best.reps}`}</b> <em>(${fmtDate(best.date)})</em></span></div>`
+      : '';
     const restHtml = rest ? `
         <div class="rest-box">
           <div class="rest-head">${icon('timer', 16)}<span>Descanso recomendado: <b>${rest.range}</b></span></div>
           <button class="rest-start" data-action="rest-start" data-sec="${rest.sec}" data-ex="${esc(ex.name)}">${icon('play', 15)}Iniciar ${fmtClock(rest.sec)}</button>
           <details class="rest-why"><summary>Porquê este tempo?</summary><p>${esc(rest.why)}</p></details>
         </div>` : '';
+    const removeHtml = ex.custom
+      ? (state.confirm === `cex:${ex.id}`
+        ? `<div class="log-entry confirm"><span>Remover este exercício? (os registos ficam guardados)</span><span class="le-actions"><button class="mini danger" data-action="del-yes" data-kind="cex" data-id="${ex.id}">Sim</button><button class="mini" data-action="del-no">Não</button></span></div>`
+        : `<button class="remove-ex" data-action="del-cex" data-id="${ex.id}">${icon('trash', 14)}Remover este exercício</button>`)
+      : '';
     return `
     <div class="exercise${open ? ' open' : ''}">
       <button class="ex-head" data-action="toggle-ex" data-ex="${esc(ex.name)}" aria-expanded="${open}">
         <span class="ex-title">
           <span class="ex-name">${esc(ex.name)}</span>
-          <span class="ex-sub"><span class="effort ${ex.effort}">${EFFORT_LABELS[ex.effort]}</span><span class="ex-reps">${esc(ex.reps)}</span></span>
+          <span class="ex-sub"><span class="effort ${ex.effort}">${EFFORT_LABELS[ex.effort]}</span><span class="ex-reps">${esc(ex.reps)}</span>${ex.custom ? '<span class="own-chip">Meu</span>' : ''}</span>
         </span>
         <span class="chev">${icon('chevron-down', 18)}</span>
       </button>
       <div class="ex-body"><div class="ex-clip"><div class="ex-content">
         <div class="tech-text">${esc(ex.tech)}</div>
-        <div class="mistakes">
+        ${ex.mistakes.length ? `<div class="mistakes">
           <div class="m-title">${icon('alert', 15)}Erros comuns</div>
           <ul>${ex.mistakes.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>
-        </div>
+        </div>` : ''}
+        ${bestHtml}
         ${restHtml}
         <div class="log-box${editing ? ' is-editing' : ''}" data-kind="${kind}">
           <div class="log-title">${icon('pencil', 15)}${editing ? 'A corrigir um registo' : 'Registar sessão'}</div>
-          ${logFormHtml(ex, kind, editing)}
+          ${logFormHtml(ex, kind, editing, history)}
           <div class="log-btns">
             <button class="log-save" data-action="save-log" data-ex="${esc(ex.name)}">${editing ? 'Atualizar' : 'Guardar'}</button>
             ${editing ? '<button class="log-cancel" data-action="cancel-edit">Cancelar</button>' : ''}
@@ -164,6 +270,7 @@ function renderTreino() {
           <div class="saved-flash" data-flash></div>
           ${history.length ? `<div class="log-history">${history.map(logRowHtml).join('')}</div>` : ''}
         </div>
+        ${removeHtml}
       </div></div></div>
     </div>`;
   }).join('');
@@ -173,18 +280,11 @@ function renderTreino() {
     comboHtml = `
     <div class="card mint">
       <div class="card-title-row">${icon('target', 16)}Para fechar este treino</div>
-      <div class="combo-text"><b>${esc(group.combo.cardio[state.profile])}</b> + <b>${esc(group.combo.abs)}</b><br>${esc(group.combo.why)}</div>
+      <div class="combo-text"><b>${esc(group.combo.cardio[state.user.cardio] || group.combo.cardio.bicicleta)}</b> + <b>${esc(group.combo.abs)}</b><br>${esc(group.combo.why)}</div>
     </div>`;
   }
 
-  const refsHtml = `
-    <details class="card refs">
-      <summary>${icon('book', 16)}A ciência do descanso entre séries</summary>
-      <p>Os tempos sugeridos dependem do tipo de exercício: quanto mais pesado e multiarticular, mais descanso ajuda a manter a carga nas séries seguintes. São valores de referência gerais, não aconselhamento médico. Ajusta ao teu corpo.</p>
-      <ul>${REST_REFERENCES.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
-    </details>`;
-
-  pageEl.innerHTML = `<div class="groups">${groupsHtml}</div>${exercisesHtml}${comboHtml}${group.kind === 'strength' ? refsHtml : ''}`;
+  pageEl.innerHTML = `${tabsHtml()}${planCard(plan.warm, 'warm')}${exercisesHtml}${addExerciseHtml()}${comboHtml}${planCard(plan.stretch, 'stretch')}`;
 }
 
 function toggleExercise(head) {
@@ -203,21 +303,38 @@ function toggleExercise(head) {
 
 function readLogForm(box, kind, exName) {
   const raw = (k) => { const el = box.querySelector(`[data-log="${k}"]`); return el ? el.value.trim() : ''; };
-  const toNum = (k) => (raw(k) === '' ? null : Number(raw(k)));
-  const entry = { exercise: exName, date: raw('date'), sets: null, reps: null, weight: null, minutes: null, distance: null, note: raw('note') || null };
+  const entry = { exercise: exName, date: raw('date'), sets: null, reps: null, weight: null, minutes: null, distance: null, note: raw('note') || null, sets_json: null };
   if (!entry.date) return { error: 'Escolhe o dia.' };
-  if (entry.date > isoDate(new Date())) return { error: errorMessage('future_date') };
-  const need = kind === 'time' ? ['minutes'] : kind === 'hold' ? ['sets', 'reps'] : ['sets', 'reps', 'weight'];
-  for (const k of need) {
-    const n = toNum(k);
-    if (n === null || Number.isNaN(n) || n < 0) return { error: kind === 'time' ? 'Diz quantos minutos treinaste.' : 'Preenche séries, reps e peso (0 se for só o peso do corpo).' };
-    entry[k] = n;
-  }
+  if (entry.date > today()) return { error: errorMessage('future_date') };
+
   if (kind === 'time') {
-    if (!(entry.minutes > 0)) return { error: 'Diz quantos minutos treinaste.' };
-    const dist = toNum('distance');
+    const minutes = raw('minutes') === '' ? NaN : Number(raw('minutes'));
+    if (!(minutes > 0)) return { error: 'Diz quantos minutos treinaste.' };
+    entry.minutes = minutes;
+    const dist = raw('distance') === '' ? null : Number(raw('distance'));
     entry.distance = dist !== null && !Number.isNaN(dist) && dist >= 0 ? dist : null;
+    return { entry };
   }
+
+  const rows = [];
+  let n = 0;
+  for (const row of box.querySelectorAll('.set-row')) {
+    n++;
+    const r = row.querySelector('[data-set="reps"]').value.trim();
+    const wEl = row.querySelector('[data-set="weight"]');
+    const w = wEl ? wEl.value.trim() : '';
+    if (r === '' && w === '') continue; // linha vazia: ignora
+    if (r === '' || (kind === 'strength' && w === '')) return { error: kind === 'hold' ? `Preenche os segundos da série ${n}.` : `Preenche as repetições e o peso da série ${n} (0 se for só o peso do corpo).` };
+    const reps = Number(r), weight = kind === 'strength' ? Number(w) : null;
+    if (!(reps > 0) || (weight !== null && !(weight >= 0))) return { error: `Valores inválidos na série ${n}.` };
+    rows.push(kind === 'strength' ? { reps, weight } : { reps });
+  }
+  if (!rows.length) return { error: 'Preenche pelo menos uma série.' };
+  const top = rows.reduce((b, r) => ((r.weight ?? 0) > (b.weight ?? 0) || ((r.weight ?? 0) === (b.weight ?? 0) && r.reps > b.reps) ? r : b), rows[0]);
+  entry.sets_json = rows;
+  entry.sets = rows.length;
+  entry.reps = top.reps;
+  entry.weight = kind === 'strength' ? top.weight : null;
   return { entry };
 }
 
@@ -229,8 +346,8 @@ async function saveLog(btn) {
   btn.disabled = true;
   const [cx, cy] = centerOf(btn);
   try {
-    if (wasEditing !== null) await api.updateLog(state.profile, state.pin, wasEditing, entry);
-    else await api.addLog(state.profile, state.pin, entry);
+    if (wasEditing !== null) await api.updateLog(uid(), state.pin, wasEditing, entry);
+    else await api.addLog(uid(), state.pin, entry);
     state.editingLog = null;
     await refreshData();
     render();
@@ -244,13 +361,46 @@ async function saveLog(btn) {
   }
 }
 
+function addSetRow(btn) {
+  const box = btn.closest('.log-box');
+  const rows = box.querySelector('[data-sets]');
+  const n = rows.querySelectorAll('.set-row').length;
+  rows.insertAdjacentHTML('beforeend', setRowHtml(n, box.dataset.kind, null, null));
+  rows.lastElementChild.querySelector('input').focus();
+}
+
+async function saveCustomExercise(form) {
+  const name = $('cx-name').value.trim();
+  const kind = $('cx-kind').value;
+  const flash = $('cx-flash');
+  if (name.length < 2) { flash.textContent = 'Escreve o nome do exercício.'; return; }
+  if (exercisesOf(state.group).some((e) => e.name.toLowerCase() === name.toLowerCase())) { flash.textContent = errorMessage('duplicate'); return; }
+  try {
+    await api.addCustomExercise(uid(), state.pin, {
+      group_key: state.group, name, kind, effort: $('cx-effort').value, distance_unit: kind === 'time' ? $('cx-dist').value : ''
+    });
+    state.addingExercise = false;
+    state.openExercise = name;
+    await refreshData();
+    render();
+    popSuccess();
+    burst(innerWidth / 2, innerHeight / 2, 30);
+    scrollToAndFocus('.exercise.open');
+  } catch (e) {
+    flash.textContent = errorMessage(e.code);
+  }
+}
+
 async function confirmDelete(kind, id) {
   try {
-    if (kind === 'log') await api.deleteLog(state.profile, state.pin, Number(id));
-    else await api.deleteMeasurement(state.profile, state.pin, id);
+    if (kind === 'log') await api.deleteLog(uid(), state.pin, Number(id));
+    else if (kind === 'meas') await api.deleteMeasurement(uid(), state.pin, id);
+    else if (kind === 'sleep') await api.deleteSleep(uid(), state.pin, id);
+    else if (kind === 'cex') await api.deleteCustomExercise(uid(), state.pin, Number(id));
     state.confirm = null;
     if (kind === 'log' && state.editingLog === Number(id)) state.editingLog = null;
     if (kind === 'meas' && state.editingMeas === id) state.editingMeas = null;
+    if (kind === 'cex') state.openExercise = null;
     await refreshData();
     render();
     pop(0.7);
@@ -287,6 +437,13 @@ const rest = createTimer(paintTimer, () => {
 
 // ---------- Medição corporal ----------
 function lastMeasurement() { return state.data.measurements[state.data.measurements.length - 1]; }
+function lastWeight() {
+  for (let i = state.data.measurements.length - 1; i >= 0; i--) {
+    const w = state.data.measurements[i].weight;
+    if (w !== null && w !== undefined && Number(w) > 0) return Number(w);
+  }
+  return null;
+}
 
 function renderChart(entries, key) {
   const pts = entries.filter((e) => e[key] !== null && e[key] !== undefined).map((e) => ({ date: e.date, v: Number(e[key]) }));
@@ -316,16 +473,20 @@ function renderChart(entries, key) {
 function buildOpinion(entries) {
   const last = entries[entries.length - 1];
   const first = entries[0];
+  const focus = state.user.focus;
+  const bits = [];
+  if (last.bmi != null) bits.push(`BMI de ${num(last.bmi)}`);
+  if (last.body_fat != null) bits.push(`${num(last.body_fat)}% de gordura corporal`);
+  const intro = bits.length ? `Com ${bits.join(' e ')}` : 'Com estes valores';
   const lines = [];
-  if (state.profile === 'mariana') {
-    lines.push(`Com BMI de ${num(last.bmi)} e ${num(last.body_fat)}% de gordura corporal, o teu corpo já está numa zona magra e saudável — o foco não deve ser perder peso, mas sim ganhar massa muscular de forma controlada.`);
-    if (last.visceral <= 3) lines.push('A gordura visceral está num valor ótimo, sem preocupação nessa área.');
-    lines.push('Como a água corporal e a massa muscular já são boas, a prioridade é sobrecarga progressiva nos treinos e proteína suficiente em todas as refeições.');
-  } else {
-    lines.push(`Com BMI de ${num(last.bmi)} e ${num(last.body_fat)}% de gordura corporal, há espaço para reduzir gordura de forma gradual, mantendo (ou até ganhando) massa muscular ao mesmo tempo.`);
-    if (last.visceral >= 9) lines.push(`A gordura visceral está num valor a vigiar (${num(last.visceral)}) — vale a pena focar em cardio regular e reduzir ligeiramente as calorias, sem cortes drásticos.`);
-    else lines.push(`A gordura visceral está em ${num(last.visceral)}, abaixo do limite de atenção — continua com o cardio regular.`);
-    lines.push('A água corporal está um pouco mais baixa, o que é comum com percentagem de gordura mais elevada — tende a subir à medida que a massa magra aumenta em proporção.');
+  if (focus === 'hipertrofia') lines.push(`${intro}, o foco é ganhar massa muscular de forma controlada: sobrecarga progressiva nos treinos e proteína suficiente em todas as refeições.`);
+  else if (focus === 'definicao') lines.push(`${intro}, o foco é reduzir gordura de forma gradual, mantendo (ou até ganhando) massa muscular ao mesmo tempo.`);
+  else lines.push(`${intro}, o foco é manter hábitos saudáveis e regulares: treino, alimentação equilibrada e bom sono.`);
+  if (last.visceral != null) {
+    const v = Number(last.visceral);
+    if (v <= 9) lines.push(`A gordura visceral está num valor normal (${v}), sem preocupação nessa área.`);
+    else if (v < 15) lines.push(`A gordura visceral está elevada (${v}) — cardio regular e um ligeiro ajuste na alimentação ajudam, sem cortes drásticos.`);
+    else lines.push(`A gordura visceral está muito elevada (${v}) — vale a pena falar com um profissional de saúde.`);
   }
   const paragraphs = lines.map((l) => `<p>${esc(l)}</p>`);
   if (entries.length > 1) {
@@ -346,29 +507,49 @@ function histRowHtml(e, unit) {
     return `<div class="hist-row confirm"><span>Apagar a medição de ${fmtDate(e.date)}?</span>
       <span class="le-actions"><button class="mini danger" data-action="del-yes" data-kind="meas" data-id="${e.date}">Sim</button><button class="mini" data-action="del-no">Não</button></span></div>`;
   }
-  const canDelete = state.data.measurements.length > 1;
   return `<div class="hist-row${state.editingMeas === e.date ? ' editing' : ''}"><span>${fmtDate(e.date)}</span><b>${num(e[state.metric])}${unit}</b>
     <span class="le-actions">
       <button class="mini-ico" data-action="edit-meas" data-date="${e.date}" aria-label="Corrigir medição">${icon('pencil', 14)}</button>
-      ${canDelete ? `<button class="mini-ico" data-action="del-meas" data-date="${e.date}" aria-label="Apagar medição">${icon('trash', 14)}</button>` : ''}
+      <button class="mini-ico" data-action="del-meas" data-date="${e.date}" aria-label="Apagar medição">${icon('trash', 14)}</button>
     </span></div>`;
 }
 
 function renderMedicao() {
   const entries = state.data.measurements;
   const last = lastMeasurement();
-  if (!last) { pageEl.innerHTML = '<div class="card">Sem medições ainda.</div>'; return; }
   const [, , activeUnit] = metricDef(state.metric);
   const editing = state.editingMeas ? entries.find((m) => m.date === state.editingMeas) : null;
   const val = (key) => (editing && editing[key] !== null && editing[key] !== undefined ? ` value="${esc(editing[key])}"` : '');
+
+  const formCard = `
+    <div class="card${editing ? ' is-editing' : ''}" id="meas-form">
+      <h2>${editing ? `A corrigir a medição de ${fmtDate(editing.date)}` : last ? 'Adicionar nova medição' : 'Adiciona a tua primeira medição'}</h2>
+      <div class="form-row">
+        <div class="field"><label for="m-date">Data</label><input type="date" id="m-date" max="${today()}" value="${editing ? editing.date : today()}"${editing ? ' disabled' : ''}></div>
+      </div>
+      ${editing ? '<p class="edit-hint">Para mudar a data, apaga esta medição e cria uma nova.</p>' : ''}
+      <div class="form-row">
+        ${METRICS.map(([key, label, unit]) => `<div class="field"><label for="m-${key}">${label} (${unit || 'nº'})</label><input type="number" inputmode="decimal" step="any" min="0" id="m-${key}" placeholder="${last ? num(last[key]) : ''}"${val(key)}></div>`).join('')}
+      </div>
+      <div class="log-btns">
+        <button class="save-btn" data-action="save-measurement">${editing ? 'Atualizar medição' : 'Guardar medição'}</button>
+        ${editing ? '<button class="log-cancel" data-action="cancel-meas">Cancelar</button>' : ''}
+      </div>
+      <div class="saved-flash" id="m-flash"></div>
+    </div>`;
+
+  if (!last) {
+    pageEl.innerHTML = `<div class="card"><h2>Medição Corporal</h2><p class="diet-note">Ainda não tens medições guardadas. Preenche o que tiveres (podes deixar campos em branco) e começa a acompanhar a tua evolução.</p></div>${formCard}`;
+    return;
+  }
 
   pageEl.innerHTML = `
     <div class="card">
       <h2>Medição Corporal</h2>
       <div class="stats-sub">Última medição: ${fmtDate(last.date)}</div>
-      <div class="stats-grid">${METRICS.map(([key, label, unit]) => `<div class="stat"><span>${label}</span><b>${num(last[key])}${unit}</b></div>`).join('')}</div>
+      <div class="stats-grid">${METRICS.map(([key, label, unit]) => `<div class="stat"><span>${label}</span><b>${num(last[key])}${last[key] != null ? unit : ''}</b></div>`).join('')}</div>
       <div class="chip-row">
-        <span class="goal-chip">${icon('target', 15)}${esc(PROFILES[state.profile].goal)}</span>
+        <span class="goal-chip">${icon('target', 15)}${esc((FOCUS[state.user.focus] || FOCUS.saude).goal)}</span>
         <button class="meaning-toggle" data-action="toggle-meanings">${icon('info', 15)}${state.showMeanings ? 'Fechar significados' : 'O que significa cada medição?'}</button>
       </div>
       ${state.showMeanings ? `<div class="meaning-box">${MEANINGS.map(([k, v]) => `<div class="m-item"><b>${k}:</b> ${v}</div>`).join('')}</div>` : ''}
@@ -385,39 +566,28 @@ function renderMedicao() {
       <div class="hist-list">${entries.slice().reverse().map((e) => histRowHtml(e, activeUnit)).join('')}</div>
     </div>
 
-    <div class="card${editing ? ' is-editing' : ''}" id="meas-form">
-      <h2>${editing ? `A corrigir a medição de ${fmtDate(editing.date)}` : 'Adicionar nova medição'}</h2>
-      <div class="form-row">
-        <div class="field"><label for="m-date">Data</label><input type="date" id="m-date" max="${isoDate(new Date())}" value="${editing ? editing.date : isoDate(new Date())}"${editing ? ' disabled' : ''}></div>
-      </div>
-      ${editing ? '<p class="edit-hint">Para mudar a data, apaga esta medição e cria uma nova.</p>' : ''}
-      <div class="form-row">
-        ${METRICS.map(([key, label, unit]) => `<div class="field"><label for="m-${key}">${label} (${unit || 'nº'})</label><input type="number" inputmode="decimal" step="any" min="0" id="m-${key}" placeholder="${num(last[key])}"${val(key)}></div>`).join('')}
-      </div>
-      <div class="log-btns">
-        <button class="save-btn" data-action="save-measurement">${editing ? 'Atualizar medição' : 'Guardar medição'}</button>
-        ${editing ? '<button class="log-cancel" data-action="cancel-meas">Cancelar</button>' : ''}
-      </div>
-      <div class="saved-flash" id="m-flash"></div>
-    </div>`;
+    ${formCard}`;
 }
 
 async function saveMeasurement(btn) {
   const date = $('m-date').value;
   if (!date) { $('m-flash').textContent = 'Escolhe uma data.'; return; }
-  if (date > isoDate(new Date())) { $('m-flash').textContent = errorMessage('future_date'); return; }
-  const base = (state.editingMeas && state.data.measurements.find((m) => m.date === state.editingMeas)) || lastMeasurement();
+  if (date > today()) { $('m-flash').textContent = errorMessage('future_date'); return; }
+  const base = (state.editingMeas && state.data.measurements.find((m) => m.date === state.editingMeas)) || lastMeasurement() || {};
   const entry = { date };
+  let filled = 0;
   for (const [key] of METRICS) {
     const raw = $(`m-${key}`).value;
     if (raw !== '' && Number(raw) < 0) { $('m-flash').textContent = 'Os valores não podem ser negativos.'; return; }
-    entry[key] = raw !== '' ? Number(raw) : base[key]; // campos vazios herdam o valor de referência
+    if (raw !== '') filled++;
+    entry[key] = raw !== '' ? Number(raw) : (base[key] ?? null); // campos vazios herdam o valor de referência
   }
+  if (!filled && !Object.keys(base).length) { $('m-flash').textContent = 'Preenche pelo menos uma medição.'; return; }
   const wasEditing = !!state.editingMeas;
   btn.disabled = true;
   const [cx, cy] = centerOf(btn);
   try {
-    await api.addMeasurement(state.profile, state.pin, entry);
+    await api.addMeasurement(uid(), state.pin, entry);
     state.editingMeas = null;
     await refreshData();
     render();
@@ -432,32 +602,220 @@ async function saveMeasurement(btn) {
 }
 
 // ---------- Alimentação ----------
+function trainedToday() {
+  const t = today();
+  return state.data.gymDays.has(t) || state.data.logs.some((l) => l.date === t);
+}
+
 function renderAlimentacao() {
-  const n = NUTRITION[state.profile];
+  const focus = FOCUS[state.user.focus] ? state.user.focus : 'saude';
+  const n = NUTRITION[focus];
+  const w = lastWeight();
+
+  let waterHtml;
+  if (w) {
+    const ml = Math.round((w * WATER.mlPerKg) / 100) * 100;
+    const withTraining = ml + WATER.trainingExtraMl;
+    const L = (v) => ptNum(v / 1000, 1);
+    const glasses = (v) => Math.ceil(v / WATER.glassMl);
+    const todayMl = trainedToday() ? withTraining : ml;
+    waterHtml = `
+      <div class="water-main"><span class="water-num">${L(todayMl)}</span><span class="water-unit">litros hoje</span></div>
+      <p class="diet-note">${trainedToday() ? 'Hoje é dia de treino, por isso soma um extra para compensar o suor.' : 'Este é o valor para um dia sem treino.'} São cerca de <b>${glasses(todayMl)} copos</b> de ${WATER.glassMl} ml.</p>
+      <div class="water-rows">
+        <div><span>Dia sem treino</span><b>${L(ml)} L</b></div>
+        <div><span>Dia de treino</span><b>${L(withTraining)} L</b></div>
+      </div>
+      <p class="footnote">Calculado a partir do teu último peso (${ptNum(w, 1)} kg × ${WATER.mlPerKg} ml). Inclui água, chás e infusões sem açúcar; a comida também ajuda. Bebe ao longo do dia, não tudo de uma vez.</p>`;
+  } else {
+    waterHtml = `<div class="water-main"><span class="water-num">${WATER.fallback}</span><span class="water-unit">por dia</span></div>
+      <p class="diet-note">Regista o teu peso na secção Medição e eu calculo a quantidade certa para ti. Em dias de treino, soma cerca de 0,5 L.</p>`;
+  }
+
+  const proteinHtml = w ? (() => {
+    const lo = Math.round(w * PROTEIN_G_PER_KG[0]), hi = Math.round(w * PROTEIN_G_PER_KG[1]);
+    return `<div class="water-main"><span class="water-num">${lo}–${hi}</span><span class="water-unit">g de proteína por dia</span></div>
+      <p class="diet-note">Reparte por 3 a 4 refeições (cerca de <b>${Math.round(lo / 4)}–${Math.round(hi / 3)} g</b> em cada).</p>`;
+  })() : '<p class="diet-note">Regista o teu peso na secção Medição para veres a tua proteína diária de referência.</p>';
+
+  const foodHtml = FOOD_GUIDE.map((c, i) => `
+    <details class="food"${i === 0 ? ' open' : ''}>
+      <summary>${esc(c.title)}</summary>
+      <div class="food-chips">${c.items.map((it) => `<span class="food-chip">${esc(it)}</span>`).join('')}</div>
+      <p class="food-portion"><b>Quantidade:</b> ${esc(c.portion[focus])}</p>
+    </details>`).join('') + `
+    <details class="food limit"><summary>${esc(FOOD_LIMIT.title)}</summary>
+      <div class="food-chips">${FOOD_LIMIT.items.map((it) => `<span class="food-chip">${esc(it)}</span>`).join('')}</div></details>`;
+
   pageEl.innerHTML = `
+    <div class="card hydration">
+      <h2>${icon('droplet', 18)} Hidratação</h2>
+      ${waterHtml}
+    </div>
     <div class="card">
-      <h2>Alimentação</h2>
+      <h2>Proteína do dia</h2>
+      ${proteinHtml}
+    </div>
+    <div class="card">
+      <h2>O que podes comer</h2>
+      <p class="diet-note">Escolhe sobretudo alimentos simples e pouco processados. Uma palma, um punhado e um polegar são medidas à tua medida, sem balança.</p>
+      ${foodHtml}
+    </div>
+    <div class="card">
+      <h2>Refeições sugeridas</h2>
       <p class="diet-note">${esc(n.note)}</p>
       ${Object.entries(n.meals).map(([title, items], i) => `
         <div class="meal-block" style="--n:${i}">
           <div class="meal-title">${esc(title)}</div>
           <ul>${items.map((it) => `<li>${esc(it)}</li>`).join('')}</ul>
         </div>`).join('')}
+      <p class="footnote">Valores de referência gerais, não substituem o acompanhamento de um nutricionista.</p>
     </div>`;
+}
+
+// ---------- Sono ----------
+const SLEEP_LABELS = ['Péssima', 'Fraca', 'Razoável', 'Boa', 'Ótima'];
+const fmtHours = (h) => `${ptNum(h, 2)} h`;
+
+function lastDays(n) {
+  return Array.from({ length: n }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (n - 1 - i)); return isoDate(d); });
+}
+
+function sleepChart() {
+  const map = new Map(state.data.sleep.map((s) => [s.day, s]));
+  const days = lastDays(14);
+  const w = 500, h = 180, padX = 18, padTop = 14, padBottom = 30, max = 12;
+  const H = h - padTop - padBottom, slot = (w - padX * 2) / days.length;
+  const y = (hrs) => h - padBottom - (hrs / max) * H;
+  const bars = days.map((d, i) => {
+    const s = map.get(d);
+    const x = padX + i * slot + 3;
+    const label = i % 2 === 1 || i === days.length - 1 ? `<text class="chart-axis" x="${x + (slot - 6) / 2}" y="${h - 8}" text-anchor="middle">${fmtShort(d)}</text>` : '';
+    if (!s) return `<rect class="sbar empty" x="${x}" y="${h - padBottom - 3}" width="${slot - 6}" height="3" rx="1.5"/>${label}`;
+    return `<rect class="sbar q${s.quality}" x="${x}" y="${y(Number(s.hours))}" width="${slot - 6}" height="${(Number(s.hours) / max) * H}" rx="5"><title>${fmtDate(d)}: ${fmtHours(s.hours)} · ${SLEEP_LABELS[s.quality - 1]}</title></rect>${label}`;
+  }).join('');
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto" role="img" aria-label="Horas de sono nos últimos 14 dias">
+    <rect x="${padX}" y="${y(9)}" width="${w - padX * 2}" height="${y(7) - y(9)}" rx="6" fill="#C6E8DC" opacity=".55"/>
+    <text class="chart-axis" x="${w - padX}" y="${y(9) - 4}" text-anchor="end">ideal: 7–9 h</text>
+    ${bars}
+  </svg>`;
+}
+
+function sleepSummary() {
+  const set = new Set(lastDays(7));
+  const week = state.data.sleep.filter((s) => set.has(s.day));
+  if (!week.length) return { html: '<p class="diet-note">Regista o teu primeiro sono e começamos a conta.</p>' };
+  const avgH = week.reduce((a, s) => a + Number(s.hours), 0) / week.length;
+  const avgQ = week.reduce((a, s) => a + Number(s.quality), 0) / week.length;
+  const msg = avgH >= 7
+    ? 'Sono em modo premium: o músculo agradece e a recuperação também.'
+    : avgH >= 6
+      ? 'Quase lá! Mais uns 30 minutos de cama e fazes upgrade para o sono premium.'
+      : 'O teu corpo anda a pedir mais cama. Tenta deitar-te mais cedo e vê a diferença no treino.';
+  return {
+    html: `<div class="sleep-stats">
+        <div><span>Média da semana</span><b>${fmtHours(avgH)}</b></div>
+        <div><span>Qualidade média</span><b>${SLEEP_LABELS[Math.min(4, Math.max(0, Math.round(avgQ) - 1))]}</b></div>
+        <div><span>Noites registadas</span><b>${week.length}/7</b></div>
+      </div><p class="diet-note">${msg}</p>`
+  };
+}
+
+function sleepRowHtml(s) {
+  const key = `sleep:${s.day}`;
+  if (state.confirm === key) {
+    return `<div class="hist-row confirm"><span>Apagar o sono de ${fmtDate(s.day)}?</span>
+      <span class="le-actions"><button class="mini danger" data-action="del-yes" data-kind="sleep" data-id="${s.day}">Sim</button><button class="mini" data-action="del-no">Não</button></span></div>`;
+  }
+  const moons = Array.from({ length: 5 }, (_, i) => `<span class="moon${i < s.quality ? ' on' : ''}">${icon('moon', 13)}</span>`).join('');
+  return `<div class="hist-row"><span>${fmtDate(s.day)}</span><b>${fmtHours(s.hours)}</b><span class="moons" title="${SLEEP_LABELS[s.quality - 1]}">${moons}</span>
+    <span class="le-actions">
+      <button class="mini-ico" data-action="edit-sleep" data-day="${s.day}" aria-label="Corrigir sono">${icon('pencil', 14)}</button>
+      <button class="mini-ico" data-action="del-sleep" data-day="${s.day}" aria-label="Apagar sono">${icon('trash', 14)}</button>
+    </span></div>`;
+}
+
+function renderSono() {
+  if (!state.sleepDate) state.sleepDate = today();
+  const day = state.sleepDate;
+  const existing = state.data.sleep.find((s) => s.day === day);
+  const q = existing ? existing.quality : 0;
+  const sum = sleepSummary();
+
+  pageEl.innerHTML = `
+    <div class="card" id="sleep-form">
+      <h2>${icon('moon', 18)} ${existing ? 'Corrigir o sono' : 'Como dormiste?'}</h2>
+      <div class="form-row">
+        <div class="field"><label for="sl-date">Noite que terminou no dia</label><input type="date" id="sl-date" max="${today()}" value="${day}"></div>
+        <div class="field"><label for="sl-hours">Horas dormidas</label><input type="number" inputmode="decimal" id="sl-hours" min="0.5" max="16" step="0.25" placeholder="ex: 7,5" value="${existing ? esc(existing.hours) : ''}"></div>
+      </div>
+      <div class="sleep-q" id="sl-q" data-q="${q}" role="radiogroup" aria-label="Qualidade do sono">
+        ${SLEEP_LABELS.map((lab, i) => `<button type="button" class="moon-btn${i < q ? ' on' : ''}" data-action="sleep-q" data-q="${i + 1}" role="radio" aria-checked="${i + 1 === q}" aria-label="${lab}">${icon('moon', 26)}<span>${lab}</span></button>`).join('')}
+      </div>
+      <button class="save-btn" data-action="save-sleep">${existing ? 'Atualizar sono' : 'Guardar sono'}</button>
+      <div class="saved-flash" id="sl-flash"></div>
+    </div>
+
+    <div class="card">
+      <h2>Esta semana</h2>
+      ${sum.html}
+      <div class="chart-wrap">${sleepChart()}</div>
+      <p class="footnote">Para adultos, o recomendado são 7 a 9 horas por noite. Dormir bem ajuda a recuperar o músculo e a manter a energia nos treinos.</p>
+    </div>
+
+    <div class="card">
+      <h2>Histórico</h2>
+      ${state.data.sleep.length ? `<div class="hist-list tall">${state.data.sleep.slice(0, 21).map(sleepRowHtml).join('')}</div>` : '<p class="diet-note">Ainda não registaste nenhuma noite.</p>'}
+    </div>`;
+}
+
+async function saveSleep(btn) {
+  const day = $('sl-date').value;
+  const hours = $('sl-hours').value === '' ? NaN : Number($('sl-hours').value);
+  const quality = Number($('sl-q').dataset.q);
+  const flash = $('sl-flash');
+  if (!day) { flash.textContent = 'Escolhe o dia.'; return; }
+  if (day > today()) { flash.textContent = errorMessage('future_date'); return; }
+  if (!(hours > 0 && hours <= 16)) { flash.textContent = 'Diz quantas horas dormiste (entre 0,5 e 16).'; return; }
+  if (!(quality >= 1 && quality <= 5)) { flash.textContent = 'Escolhe a qualidade do sono.'; return; }
+  const wasExisting = state.data.sleep.some((s) => s.day === day);
+  btn.disabled = true;
+  const [cx, cy] = centerOf(btn);
+  try {
+    await api.setSleep(uid(), state.pin, { day, hours, quality });
+    await refreshData();
+    render();
+    flashOk($('sl-flash'), wasExisting ? 'Sono atualizado!' : 'Sono guardado!');
+    burst(cx, cy, 28);
+    popSuccess();
+  } catch (e) {
+    btn.disabled = false;
+    toast(errorMessage(e.code));
+  }
+}
+
+function pickSleepQuality(btn) {
+  const q = Number(btn.dataset.q);
+  const box = $('sl-q');
+  box.dataset.q = q;
+  box.querySelectorAll('.moon-btn').forEach((b, i) => {
+    b.classList.toggle('on', i < q);
+    b.setAttribute('aria-checked', String(i + 1 === q));
+  });
 }
 
 // ---------- Progresso (resumo mensal + calendário) ----------
 const ringOffset = (n) => 100 - Math.min(n / GYM_GOAL_PER_MONTH, 1) * 100;
 
-// dias de treino do mês = dias marcados ∪ dias com registos
+// dias de treino do mês = dias marcados ∪ dias com registos (nunca dias futuros)
 function trainedCount(key) {
-  const s = new Set([...state.data.gymDays].filter((d) => d.startsWith(key)));
-  state.data.logs.forEach((l) => { if (l.date.startsWith(key)) s.add(l.date); });
+  const t = today();
+  const s = new Set([...state.data.gymDays].filter((d) => d.startsWith(key) && d <= t));
+  state.data.logs.forEach((l) => { if (l.date.startsWith(key) && l.date <= t) s.add(l.date); });
   return s.size;
 }
 
-const VERDICT_ICON = { empty: 'sparkles', starting: 'sparkles', flying: 'flame', rising: 'trend', steady: 'leaf', dip: 'sparkles' };
-const TREND_ICON = { up: 'arrow-up', down: 'arrow-down', flat: 'minus', new: 'sparkles' };
+const VERDICT_ICON = { empty: 'sparkles', few: 'leaf', good: 'trend', goal: 'flame' };
 
 function dayDetailHtml(iso) {
   if (!iso) return '<div class="dd-empty">Toca num dia para ver o que fizeste.</div>';
@@ -467,7 +825,7 @@ function dayDetailHtml(iso) {
   return `
     <div class="dd-head"><b>${d} de ${MONTH_NAMES[m - 1].toLowerCase()}</b><span class="dd-chip${marked ? ' on' : ''}">${marked ? 'Dia de treino' : 'Sem treino'}</span></div>
     ${logs.length
-      ? logs.map((l) => `<div class="dd-log"><span>${esc(l.exercise)}</span><b>${esc(fmtLog(l))}</b></div>`).join('')
+      ? logs.map((l) => `<div class="dd-log"><span>${esc(l.exercise)}</span><span class="dd-val">${logChips(l)}</span></div>`).join('')
       : '<div class="dd-empty">Sem registos neste dia.</div>'}
     ${logs.length
       ? '<div class="dd-note">Marcado automaticamente pelos teus registos.</div>'
@@ -477,31 +835,28 @@ function dayDetailHtml(iso) {
 function renderProgresso() {
   const year = state.calMonth.getFullYear(), month = state.calMonth.getMonth();
   const key = `${year}-${pad2(month + 1)}`;
-  const today = isoDate(new Date());
+  const t = today();
   const isCurrent = key >= monthKeyOf(new Date());
-  const p = PROFILES[state.profile];
 
   if (state.selectedDay && !state.selectedDay.startsWith(key)) state.selectedDay = null;
-  if (!state.selectedDay && isCurrent) state.selectedDay = today;
+  if (!state.selectedDay && isCurrent) state.selectedDay = t;
 
-  const sum = summarize({ logs: state.data.logs, gymDays: state.data.gymDays, measurements: state.data.measurements }, key, GYM_GOAL_PER_MONTH);
-  const story = buildStory(sum, { name: p.name, focus: p.focus });
+  const sum = summarize({ logs: state.data.logs, gymDays: state.data.gymDays }, key, GYM_GOAL_PER_MONTH, t);
+  const story = buildStory(sum, { name: state.user.name, focus: state.user.focus });
   const count = sum.sessions;
 
   const chips = [`<span class="s-chip">${icon('calendar', 14)}${count}/${GYM_GOAL_PER_MONTH} treinos</span>`];
-  if (sum.volume > 0) chips.push(`<span class="s-chip">${icon('dumbbell', 14)}${sum.volume.toLocaleString('pt-PT')} kg de volume</span>`);
   if (sum.minutes > 0) chips.push(`<span class="s-chip">${icon('activity', 14)}${sum.minutes} min de cardio/desporto</span>`);
 
-  const highlightsHtml = sum.highlights.length ? `
+  const bestsHtml = sum.bests.length ? `
     <div class="card">
-      <h2>Evolução de carga</h2>
-      <div class="hl-list">${sum.highlights.map((h) => `
-        <div class="hl-row ${h.trend}">
-          <span class="hl-ico">${icon(TREND_ICON[h.trend], 16)}</span>
-          <span class="hl-name">${esc(h.name)}</span>
-          <span class="hl-val">${h.trend === 'new' ? `Estreia: ${esc(h.to)}` : `${esc(h.from)} → ${esc(h.to)}${h.deltaKg ? ` <em>(${h.deltaKg > 0 ? '+' : ''}${h.deltaKg}kg)</em>` : ''}`}</span>
+      <h2>Melhor carga de cada exercício</h2>
+      <div class="hl-list">${sum.bests.map((b) => `
+        <div class="hl-row">
+          <span class="hl-ico">${icon('star', 16)}</span>
+          <span class="hl-name">${esc(b.name)}</span>
+          <span class="hl-val"><b>${ptNum(b.weight, 2)} kg × ${b.reps}</b> <em>${fmtShort(b.date)}</em></span>
         </div>`).join('')}</div>
-      <p class="footnote">Comparamos a carga estimada (peso × repetições, fórmula de Epley) com o melhor registo do mês anterior. Se não houver mês anterior, comparamos o início e o fim do mês.</p>
     </div>` : '';
 
   const logDays = new Set(state.data.logs.map((l) => l.date));
@@ -510,9 +865,9 @@ function renderProgresso() {
   let cells = '<div class="cal-day empty"></div>'.repeat(startDow);
   for (let d = 1; d <= daysInMonth; d++) {
     const iso = `${key}-${pad2(d)}`;
-    const done = state.data.gymDays.has(iso) || logDays.has(iso);
-    const future = iso > today;
-    cells += `<button class="cal-day${done ? ' done' : ''}${iso === today ? ' today' : ''}${iso === state.selectedDay ? ' sel' : ''}${future ? ' future' : ''}" data-action="select-day" data-date="${iso}" aria-pressed="${done}"${future ? ' disabled aria-label="Ainda não chegou"' : ''}>${d}</button>`;
+    const future = iso > t;
+    const done = !future && (state.data.gymDays.has(iso) || logDays.has(iso));
+    cells += `<button class="cal-day${done ? ' done' : ''}${iso === t ? ' today' : ''}${iso === state.selectedDay ? ' sel' : ''}${future ? ' future' : ''}" data-action="select-day" data-date="${iso}" aria-pressed="${done}"${future ? ' disabled aria-label="Ainda não chegou"' : ''}>${d}</button>`;
   }
 
   pageEl.innerHTML = `
@@ -529,7 +884,7 @@ function renderProgresso() {
       <div class="story-mission">${icon('target', 16)}<span>${esc(story.mission)}</span></div>
     </div>
 
-    ${highlightsHtml}
+    ${bestsHtml}
 
     <div class="card">
       <div class="cal-summary">
@@ -562,7 +917,7 @@ function selectDay(el) {
 
 async function toggleDay(iso) {
   const had = state.data.gymDays.has(iso);
-  if (!had && iso > isoDate(new Date())) { toast(errorMessage('future_date')); return; }
+  if (!had && iso > today()) { toast(errorMessage('future_date')); return; }
   const key = iso.slice(0, 7);
   const before = trainedCount(key);
   const setDay = (on) => { if (on) state.data.gymDays.add(iso); else state.data.gymDays.delete(iso); };
@@ -583,7 +938,7 @@ async function toggleDay(iso) {
   celebrate(!had);
   if (!had) { popSuccess(); haptic([10, 30, 10]); }
   try {
-    const out = await api.toggleGymDay(state.profile, state.pin, iso);
+    const out = await api.toggleGymDay(uid(), state.pin, iso);
     if (out.on !== !had) { setDay(out.on); render(); }
   } catch (e) {
     setDay(had);
@@ -597,21 +952,23 @@ const PAGES = [
   ['treino', 'Treino', 'dumbbell'],
   ['medicao', 'Medição', 'activity'],
   ['alimentacao', 'Alimentação', 'leaf'],
+  ['sono', 'Sono', 'moon'],
   ['progresso', 'Progresso', 'trend']
 ];
 
 function renderNav() {
   const nav = $('nav');
   if (!nav.firstChild) {
+    nav.style.setProperty('--tabs', PAGES.length);
     nav.innerHTML = '<div class="tab-indicator"></div>' + PAGES.map(([key, label, ic], i) =>
-      `<button class="nav-btn" data-action="page" data-page="${key}" data-pitch="${(0.9 + i * 0.12).toFixed(2)}">${icon(ic, 22)}<span>${label}</span></button>`).join('');
+      `<button class="nav-btn" data-action="page" data-page="${key}" data-pitch="${(0.9 + i * 0.1).toFixed(2)}">${icon(ic, 22)}<span>${label}</span></button>`).join('');
   }
   const idx = PAGES.findIndex((p) => p[0] === state.page);
   nav.style.setProperty('--i', idx);
   nav.querySelectorAll('.nav-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
 }
 
-const RENDERERS = { treino: renderTreino, medicao: renderMedicao, alimentacao: renderAlimentacao, progresso: renderProgresso };
+const RENDERERS = { treino: renderTreino, medicao: renderMedicao, alimentacao: renderAlimentacao, sono: renderSono, progresso: renderProgresso };
 
 function render(fresh = false) {
   renderNav();
@@ -637,7 +994,9 @@ function onClick(ev) {
       state.confirm = null;
       window.scrollTo({ top: 0, behavior: 'smooth' });
       break;
-    case 'group': state.group = d.group; state.openExercise = null; state.editingLog = null; state.confirm = null; break;
+    case 'group':
+      state.group = d.group; state.openExercise = null; state.editingLog = null; state.confirm = null; state.addingExercise = false;
+      break;
     case 'toggle-ex': toggleExercise(el); return;
     case 'metric': state.metric = d.metric; break;
     case 'toggle-meanings': state.showMeanings = !state.showMeanings; render(); return;
@@ -646,7 +1005,12 @@ function onClick(ev) {
     case 'select-day': selectDay(el); return;
     case 'toggle-day': toggleDay(d.date); return;
     case 'save-log': saveLog(el); return;
+    case 'add-set': addSetRow(el); return;
     case 'save-measurement': saveMeasurement(el); return;
+    case 'save-sleep': saveSleep(el); return;
+    case 'sleep-q': pickSleepQuality(el); return;
+    case 'edit-sleep': state.sleepDate = d.day; state.confirm = null; render(); scrollToAndFocus('#sleep-form'); return;
+    case 'del-sleep': state.confirm = `sleep:${d.day}`; render(); return;
     case 'edit-log':
       state.editingLog = Number(d.id); state.openExercise = d.ex; state.confirm = null;
       render(); scrollToAndFocus('.log-box.is-editing'); return;
@@ -655,6 +1019,9 @@ function onClick(ev) {
     case 'edit-meas': state.editingMeas = d.date; state.confirm = null; render(); scrollToAndFocus('#meas-form'); return;
     case 'cancel-meas': state.editingMeas = null; render(); return;
     case 'del-meas': state.confirm = `meas:${d.date}`; render(); return;
+    case 'add-ex-open': state.addingExercise = true; render(); scrollToAndFocus('#add-ex-form'); return;
+    case 'add-ex-cancel': state.addingExercise = false; render(); return;
+    case 'del-cex': state.confirm = `cex:${d.id}`; render(); return;
     case 'del-no': state.confirm = null; render(); return;
     case 'del-yes': confirmDelete(d.kind, d.id); return;
     case 'rest-start': rest.start(Number(d.sec), d.ex); return;
@@ -663,106 +1030,82 @@ function onClick(ev) {
   render(true); // mudança de secção/grupo/métrica/mês: entrada animada
 }
 
-// ---------- splash / login ----------
+pageEl.addEventListener('submit', (e) => {
+  if (e.target.id === 'add-ex-form') { e.preventDefault(); saveCustomExercise(e.target); }
+});
+
+pageEl.addEventListener('change', (e) => {
+  if (e.target.id === 'sl-date') { state.sleepDate = e.target.value || today(); state.confirm = null; render(); }
+  if (e.target.id === 'cx-kind') $('cx-dist-row').hidden = e.target.value !== 'time';
+});
+
+// ---------- login ----------
 const splashEl = $('splash');
 const splashInner = $('splash-inner');
-let pinCleanup = null;
 let leaveTimer = 0;
 
-function showChoices() {
-  if (pinCleanup) pinCleanup();
-  splashEl.classList.remove('pin-mode');
-  splashInner.innerHTML = `<div class="splash-choices">${Object.entries(PROFILES).map(([key, p], i) =>
-    `<button class="splash-choice rise" style="--n:${i + 1}" data-p="${key}">
-       <span class="avatar big ${p.tone}">${esc(p.name[0])}</span>
-       <span class="sc-name">${esc(p.name)}</span>
-       <span class="sc-goal">${esc(p.tagline)}</span>
-     </button>`).join('')}</div>`;
-  splashInner.querySelectorAll('.splash-choice').forEach((el) => { el.onclick = () => showPin(el.dataset.p); });
-}
-
-function showPin(profileKey) {
-  if (pinCleanup) pinCleanup();
+function showLogin() {
   splashEl.classList.add('pin-mode');
-  const p = PROFILES[profileKey];
-  splashInner.innerHTML = `<div class="pin-box rise" id="pin-box">
-    <div class="avatar big ${p.tone}">${esc(p.name[0])}</div>
-    <div class="pin-title">Olá, ${esc(p.name)}</div>
-    <div class="pin-sub">Escreve o teu código</div>
-    <div class="pin-dots" id="pin-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  let last = '';
+  try { last = localStorage.getItem(LAST_NUMBER_KEY) || ''; } catch { /* ignora */ }
+  splashInner.innerHTML = `<form class="login-box rise" id="login-form" autocomplete="on" novalidate>
+    <div class="login-title">Entrar</div>
+    <div class="login-sub">Usa o teu número de utilizador e a tua palavra-passe</div>
+    <label class="lf"><span>${icon('user', 15)}Número de utilizador</span>
+      <input id="lg-number" name="username" type="text" inputmode="numeric" autocomplete="username" autocapitalize="off" placeholder="ex: 1" value="${esc(last)}"></label>
+    <label class="lf"><span>${icon('lock', 15)}Palavra-passe</span>
+      <input id="lg-pass" name="password" type="password" autocomplete="current-password" placeholder="••••"></label>
     <div class="pin-error" id="pin-error" role="alert"></div>
-    <div class="keypad">
-      ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button class="key" type="button" data-k="${n}" data-pitch="${(0.85 + n * 0.06).toFixed(2)}">${n}</button>`).join('')}
-      <span></span>
-      <button class="key" type="button" data-k="0" data-pitch="0.85">0</button>
-      <button class="key ghost" type="button" data-k="back" aria-label="Apagar">${icon('delete', 22)}</button>
-    </div>
-    <button class="pin-back" id="pin-back" type="button">${icon('chevron-left', 14)}Voltar</button>
-  </div>`;
+    <button class="save-btn" id="lg-submit" type="submit">Entrar</button>
+  </form>`;
+  const form = $('login-form');
+  (last ? $('lg-pass') : $('lg-number')).focus();
 
-  const box = $('pin-box');
-  const dots = [...splashInner.querySelectorAll('#pin-dots i')];
-  let pin = '';
-  let busy = false;
-  const paint = () => dots.forEach((dot, i) => dot.classList.toggle('on', i < pin.length));
-
-  async function submit() {
-    busy = true;
-    $('pin-error').textContent = 'A verificar…';
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const number = $('lg-number').value.trim();
+    const pass = $('lg-pass').value;
+    const err = $('pin-error');
+    if (!number || !pass) { err.textContent = 'Preenche o número e a palavra-passe.'; return; }
+    const btn = $('lg-submit');
+    btn.disabled = true;
+    err.textContent = 'A verificar…';
     try {
-      await api.login(profileKey, pin);
-      cleanup();
-      await startSession(profileKey, pin);
-    } catch (e) {
-      $('pin-error').textContent = errorMessage(e.code);
-      box.classList.remove('shake'); void box.offsetWidth; box.classList.add('shake');
+      const out = await api.login(number, pass);
+      try { localStorage.setItem(LAST_NUMBER_KEY, number); } catch { /* ignora */ }
+      await startSession(out.profile, pass);
+    } catch (ex) {
+      err.textContent = ex.code === 'server'
+        ? 'Não foi possível entrar. Se acabaste de atualizar a app, falta correr o ficheiro supabase/atualizar.sql no Supabase.'
+        : errorMessage(ex.code);
+      form.classList.remove('shake'); void form.offsetWidth; form.classList.add('shake');
       pop(0.55);
       haptic([30, 40, 30]);
-      pin = '';
-      paint();
+      $('lg-pass').value = '';
+      btn.disabled = false;
     }
-    busy = false;
-  }
-
-  async function press(k) {
-    if (busy) return;
-    if (k === 'back') pin = pin.slice(0, -1);
-    else if (pin.length < 4) pin += k;
-    paint();
-    if (pin.length === 4) await submit();
-  }
-
-  const onKey = (e) => {
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (/^\d$/.test(e.key)) { pop(0.85 + Number(e.key) * 0.06); press(e.key); }
-    else if (e.key === 'Backspace') { pop(0.8); press('back'); }
-  };
-  function cleanup() { document.removeEventListener('keydown', onKey); pinCleanup = null; }
-  pinCleanup = cleanup;
-  document.addEventListener('keydown', onKey);
-
-  splashInner.querySelectorAll('.key').forEach((b) => { b.onclick = () => press(b.dataset.k); });
-  $('pin-back').onclick = () => { cleanup(); showChoices(); };
+  });
 }
 
-async function startSession(profileKey, pin) {
-  const out = await api.getData(profileKey, pin);
-  const p = PROFILES[profileKey];
-  state.profile = profileKey;
+async function startSession(profile, pin) {
+  const user = { id: profile.id, name: profile.name, focus: profile.focus || 'saude', cardio: profile.cardio || 'bicicleta', tone: toneFor(profile.name) };
+  const out = await api.getData(user.id, pin);
+  state.user = user;
   state.pin = pin;
   applyData(out);
   Object.assign(state, {
-    page: 'treino', group: 'gluteo', metric: 'weight', openExercise: null, showMeanings: false,
-    calMonth: startOfMonth(new Date()), selectedDay: null, editingLog: null, editingMeas: null, confirm: null
+    page: 'treino', group: 'pernas', metric: 'weight', openExercise: null, showMeanings: false,
+    calMonth: startOfMonth(new Date()), selectedDay: null, editingLog: null, editingMeas: null, confirm: null,
+    addingExercise: false, sleepDate: null
   });
-  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ profileKey, pin })); } catch { /* ignora */ }
+  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ profile, pin })); } catch { /* ignora */ }
 
-  $('avatar').className = `avatar ${p.tone}`;
-  $('avatar').textContent = p.name[0];
-  $('header-eyebrow').textContent = `Hey, sweetie (aka ${p.name})`;
-  const outdated = !isDemo && out.version !== 2;
+  $('avatar').className = `avatar ${user.tone}`;
+  $('avatar').textContent = user.name[0].toUpperCase();
+  $('header-eyebrow').textContent = `Hey, sweetie (aka ${user.name})`;
+  const outdated = !isDemo && out.version !== 3;
   $('demo-banner').innerHTML = `${icon('alert', 16)}<span>${outdated
-    ? 'Há novidades! Falta atualizar a base de dados para ativar: apagar/corrigir registos, outros desportos e datas seguras. Segue as instruções do ficheiro supabase/migracao-2.sql.'
+    ? 'Há novidades! Falta atualizar a base de dados: corre o ficheiro supabase/atualizar.sql no Supabase.'
     : 'Modo demo: os dados ficam só neste dispositivo. Liga o Supabase (ver README) para os guardar online.'}</span>`;
   $('demo-banner').hidden = !(isDemo || outdated);
   $('app').hidden = false;
@@ -776,14 +1119,14 @@ async function startSession(profileKey, pin) {
 
 function logout() {
   rest.stop();
-  state.profile = null;
+  state.user = null;
   state.pin = null;
   try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignora */ }
   clearTimeout(leaveTimer);
   $('app').hidden = true;
   splashEl.classList.remove('leaving');
   splashEl.hidden = false;
-  showChoices();
+  showLogin();
 }
 
 // ---------- som ----------
@@ -831,11 +1174,11 @@ addEventListener('pointermove', (e) => {
 }, { passive: true });
 
 (async function init() {
-  showChoices();
+  showLogin();
   // mantém a sessão ao recarregar a página (só enquanto o separador estiver aberto)
   try {
     const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null');
-    if (saved && PROFILES[saved.profileKey]) await startSession(saved.profileKey, saved.pin);
+    if (saved && saved.profile && saved.profile.id) await startSession(saved.profile, saved.pin);
   } catch { logout(); }
 })();
 
