@@ -35,9 +35,9 @@ update public.profiles set failed_attempts = 0, locked_until = null where id = '
 Quando saírem funcionalidades novas que precisem da base de dados, corre o ficheiro `supabase/atualizar.sql` (ou, se já tinhas corrido uma versão anterior, o pequeno `supabase/atualizar-metas.sql`) no SQL Editor (cola tudo e **Run**). É seguro repetir e **não apaga dados nem PINs**. Inclui: apagar/corrigir, desportos, datas seguras, login por número, séries por dia, sono, exercícios personalizados, meta mensal e a limpeza de dias marcados no futuro.
 
 ### Pessoas e palavras-passe
-O login é por **número de utilizador + palavra-passe**. A splash não mostra nomes. Cada pessoa só vê os seus dados.
-- Os números iniciais são `1` (Mariana) e `2` (Élia). A palavra-passe é o código que já tinham (pode ser mais longo e ter letras).
-- **Criar uma pessoa nova:** abre `supabase/novo-utilizador.sql`, muda os valores marcados com `<<<` (identificador, nome, número, objetivo e palavra-passe) e corre no SQL Editor do Supabase. Esse ficheiro tem também os comandos para ver quem existe, mudar uma palavra-passe e desbloquear alguém.
+O login é por **nome de utilizador + palavra-passe** (o utilizador não distingue maiúsculas de minúsculas). A splash não mostra nomes. Cada pessoa só vê os seus dados.
+- **Definir o utilizador e a palavra-passe de quem já existe** (para não perder dados): ver o comando `update` em `supabase/novo-utilizador.sql`. Não guardes palavras-passe no GitHub.
+- **Criar uma pessoa nova:** abre `supabase/novo-utilizador.sql`, muda os valores marcados com `<<<` e corre no SQL Editor do Supabase. O ficheiro tem também os comandos para ver quem existe, mudar uma palavra-passe e desbloquear alguém.
 - Cada pessoa começa sem dados: define a meta do mês na aba Progresso e adiciona a primeira medição.
 
 ### Meta mensal

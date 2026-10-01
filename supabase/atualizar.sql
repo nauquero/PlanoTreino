@@ -20,9 +20,12 @@ alter table public.profiles add column if not exists login_number text;
 alter table public.profiles add column if not exists focus  text not null default 'saude';
 alter table public.profiles add column if not exists cardio text not null default 'bicicleta';
 create unique index if not exists profiles_login_number_key on public.profiles (login_number);
--- números de utilizador iniciais (só se ainda não tiverem)
-update public.profiles set login_number = '1', focus = 'hipertrofia', cardio = 'escadas'   where id = 'mariana' and login_number is null;
-update public.profiles set login_number = '2', focus = 'definicao',   cardio = 'bicicleta' where id = 'elia'    and login_number is null;
+-- objetivo inicial das duas contas que já existem (só se ainda não foi mudado)
+update public.profiles set focus = 'hipertrofia', cardio = 'escadas'   where id = 'mariana' and focus = 'saude';
+update public.profiles set focus = 'definicao',   cardio = 'bicicleta' where id = 'elia'    and focus = 'saude';
+-- nome de utilizador provisório = identificador interno (depois defines o definitivo; ver "novo-utilizador.sql")
+update public.profiles set login_number = id where login_number is null;
+create unique index if not exists profiles_login_lower_key on public.profiles (lower(login_number));
 
 create table if not exists public.sleep_logs (
   profile text not null references public.profiles(id),
@@ -77,7 +80,7 @@ declare
   r    text;
   prof public.profiles;
 begin
-  select id into pid from public.profiles where login_number = trim(p_number);
+  select id into pid from public.profiles where lower(login_number) = lower(trim(p_number));
   if pid is null then return jsonb_build_object('ok', false, 'error', 'invalid_pin'); end if;
   r := public.auth_pin(pid, p_pin);
   if r <> 'ok' then return jsonb_build_object('ok', false, 'error', r); end if;

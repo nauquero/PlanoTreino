@@ -1121,9 +1121,9 @@ function showLogin() {
   try { last = localStorage.getItem(LAST_NUMBER_KEY) || ''; } catch { /* ignora */ }
   splashInner.innerHTML = `<form class="login-box rise" id="login-form" autocomplete="on" novalidate>
     <div class="login-title">Entrar</div>
-    <div class="login-sub">Usa o teu número de utilizador e a tua palavra-passe</div>
-    <label class="lf"><span>${icon('user', 15)}Número de utilizador</span>
-      <input id="lg-number" name="username" type="text" inputmode="numeric" autocomplete="username" autocapitalize="off" placeholder="ex: 1" value="${esc(last)}"></label>
+    <div class="login-sub">Usa o teu nome de utilizador e a tua palavra-passe</div>
+    <label class="lf"><span>${icon('user', 15)}Nome de utilizador</span>
+      <input id="lg-number" name="username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="40" placeholder="o teu utilizador" value="${esc(last)}"></label>
     <label class="lf"><span>${icon('lock', 15)}Palavra-passe</span>
       <input id="lg-pass" name="password" type="password" autocomplete="current-password" placeholder="••••"></label>
     <div class="pin-error" id="pin-error" role="alert"></div>
@@ -1137,7 +1137,7 @@ function showLogin() {
     const number = $('lg-number').value.trim();
     const pass = $('lg-pass').value;
     const err = $('pin-error');
-    if (!number || !pass) { err.textContent = 'Preenche o número e a palavra-passe.'; return; }
+    if (!number || !pass) { err.textContent = 'Preenche o utilizador e a palavra-passe.'; return; }
     const btn = $('lg-submit');
     btn.disabled = true;
     err.textContent = 'A verificar…';
@@ -1173,7 +1173,7 @@ async function startSession(profile, pin) {
 
   $('avatar').className = `avatar ${user.tone}`;
   $('avatar').textContent = user.name[0].toUpperCase();
-  $('header-eyebrow').textContent = `Hey, sweetie (aka ${user.name})`;
+  $('header-aka').textContent = `aka ${user.name}`;
   const outdated = !isDemo && out.version !== 4;
   $('demo-banner').innerHTML = `${icon('alert', 16)}<span>${outdated
     ? 'Há novidades! Falta atualizar a base de dados: corre o ficheiro supabase/atualizar.sql no Supabase.'

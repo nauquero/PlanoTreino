@@ -82,8 +82,8 @@ const norm = (e) => ({ sets: null, reps: null, weight: null, minutes: null, dist
 
 const demo = {
   async login(number, pin) {
-    if (!/^\d{1,6}$/.test(String(number).trim()) || String(pin).length < 4) throw new ApiError('invalid_pin');
-    const n = String(number).trim();
+    const n = String(number).trim().toLowerCase();
+    if (!n || n.length > 40 || String(pin).length < 4) throw new ApiError('invalid_pin');
     const focus = n === '1' ? 'hipertrofia' : n === '2' ? 'definicao' : 'saude';
     return { ok: true, profile: { id: `demo-${n}`, name: `Convidada ${n}`, focus, cardio: n === '1' ? 'escadas' : 'bicicleta' } };
   },
