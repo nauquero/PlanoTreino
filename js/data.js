@@ -146,11 +146,12 @@ export const FOOD_LIMIT = {
 // ---------- Descanso entre séries ----------
 // Tempo recomendado por tipo de exercício (segundos). Valores de referência baseados na evidência
 // sobre intervalos de descanso no treino de força; não são aconselhamento médico.
+// (Só se mostra o tempo; não há explicações nem citações no ecrã.)
 export const REST = {
-  alto: { sec: 150, range: '2–3 min', why: 'Exercício pesado e multiarticular: descansar 2–3 min dá tempo ao corpo para repor energia e manter a carga e as repetições nas séries seguintes.' },
-  'medio-alto': { sec: 120, range: '~2 min', why: 'Exercício multiarticular de esforço moderado a alto: cerca de 2 min chegam para manteres o desempenho sem a sessão se alongar demasiado.' },
-  medio: { sec: 90, range: '1–2 min', why: 'Exercício mais localizado: 1 a 2 min são suficientes para recuperares bem entre séries e manteres a sessão dinâmica.' },
-  baixo: { sec: 60, range: '~1 min', why: 'Músculos pequenos e exercícios de isolamento: cerca de 1 min basta para recuperares e continuares.' }
+  alto: { sec: 150, range: '2–3 min' },
+  'medio-alto': { sec: 120, range: '~2 min' },
+  medio: { sec: 90, range: '1–2 min' },
+  baixo: { sec: 60, range: '~1 min' }
 };
 
 // ---------- Exercícios ----------
@@ -318,6 +319,22 @@ export const GROUPS = {
     ]
   }
 };
+
+// Exercícios iniciais (os do plano original): estes aparecem SEMPRE.
+// Todos os outros do catálogo ficam escondidos e só aparecem se a pessoa os adicionar com o botão "+"
+// (ou se já tiverem registos).
+export const CORE = new Set([
+  'Hip Thrust', 'RDLs', 'Single Leg Leg Press', 'Cable Kickback', 'Cadeira Adutora', 'Cadeira Abdutora',
+  'Hack Squat', 'Leg Press', 'Leg Extension', 'Leg Curl', 'Calf Raises',
+  'Lat Pulldown', 'T Bar Row', 'Low Row',
+  'Chest Press', 'Pec Fly',
+  'Bicep Curl', 'Hammer Curl',
+  'Extensão de Tríceps no Cabo', 'Tríceps Francês',
+  'Shoulder Press', 'Lateral Raises', 'Delt Fly',
+  'Elevação de Pernas', 'Crunch na Máquina', 'Prancha',
+  'Passadeira', 'Escadas', 'Elíptica', 'Bicicleta Sentada',
+  'Natação', 'Corrida', 'Caminhada', 'Ténis', 'Aulas de grupo'
+]);
 
 // Separadores do Treino (Braços tem sub-separadores)
 export const TABS = [

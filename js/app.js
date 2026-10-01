@@ -1,6 +1,6 @@
 import { api, isDemo, errorMessage } from './api.js';
 import {
-  FOCUS, TONES, METRICS, MEANINGS, EFFORT_LABELS, NUTRITION, GROUPS, TABS, WARMUP_STRETCH, GOAL_SUGGESTIONS, REST,
+  FOCUS, TONES, METRICS, MEANINGS, EFFORT_LABELS, NUTRITION, GROUPS, TABS, CORE, WARMUP_STRETCH, GOAL_SUGGESTIONS, REST,
   WATER, PROTEIN_G_PER_KG, FOOD_GUIDE, FOOD_LIMIT
 } from './data.js';
 import { icon } from './icons.js';
@@ -101,9 +101,35 @@ function customToEx(c) {
   };
 }
 
+// Exercícios visíveis num grupo: os iniciais (sempre), os que a pessoa adicionou do catálogo ou criou,
+// e qualquer exercício do catálogo que já tenha registos (para nunca esconder dados).
 function exercisesOf(groupKey) {
-  const custom = state.data.custom.filter((c) => c.group_key === groupKey).map(customToEx);
-  return [...GROUPS[groupKey].exercises, ...custom];
+  const g = GROUPS[groupKey];
+  const rows = state.data.custom.filter((c) => c.group_key === groupKey);
+  const added = new Map(rows.map((c) => [c.name.toLowerCase(), c]));
+  const logged = new Set(state.data.logs.map((l) => l.exercise));
+  const base = g.exercises
+    .filter((ex) => CORE.has(ex.name) || added.has(ex.name.toLowerCase()) || logged.has(ex.name))
+    .map((ex) => {
+      const row = added.get(ex.name.toLowerCase());
+      return !CORE.has(ex.name) && row ? { ...ex, custom: true, id: row.id } : ex;
+    });
+  const catalogue = new Set(g.exercises.map((e) => e.name.toLowerCase()));
+  const own = rows.filter((c) => !catalogue.has(c.name.toLowerCase())).map(customToEx);
+  return [...base, ...own];
+}
+
+// Sugestões do catálogo ainda não visíveis neste grupo
+function suggestionsFor(groupKey) {
+  const shown = new Set(exercisesOf(groupKey).map((e) => e.name));
+  return GROUPS[groupKey].exercises.filter((ex) => !shown.has(ex.name));
+}
+
+// grupo (separador) a que pertence um exercício, para agrupar o detalhe do dia
+function groupOf(name) {
+  if (BUILTIN.has(name)) return BUILTIN.get(name).group;
+  const c = state.data.custom.find((x) => x.name === name);
+  return c && GROUPS[c.group_key] ? c.group_key : 'outros';
 }
 
 function exInfo(name) {
@@ -195,6 +221,23 @@ function addExerciseHtml() {
     return `<div class="card add-ex"><button class="add-ex-btn" data-action="add-ex-open">${icon('plus', 18)}Adicionar exercício</button></div>`;
   }
   const g = GROUPS[state.group];
+  if (state.addingExercise === 'menu') {
+    const sugg = suggestionsFor(state.group);
+    return `<div class="card add-ex-menu" id="add-ex-menu">
+      <h2>Adicionar a ${esc(g.label)}</h2>
+      ${sugg.length ? `<div class="sugg-title">Sugestões (toca em + para juntar ao teu treino)</div>
+        <div class="sugg-list">${sugg.map((ex) => `
+          <div class="sugg-row">
+            <div class="sugg-info"><span class="sugg-name">${esc(ex.name)}</span><span class="sugg-sub">${EFFORT_LABELS[ex.effort]} · ${esc(ex.reps)}</span></div>
+            <button class="sugg-add" data-action="add-suggest" data-name="${esc(ex.name)}">${icon('plus', 14)}Adicionar</button>
+          </div>`).join('')}</div>` : '<p class="sugg-none">Já tens aqui todos os exercícios sugeridos.</p>'}
+      <div class="log-btns">
+        <button class="save-btn" data-action="add-ex-custom">${icon('pencil', 15)} Criar um exercício meu</button>
+        <button type="button" class="log-cancel" data-action="add-ex-cancel">Fechar</button>
+      </div>
+      <div class="saved-flash" id="cx-flash"></div>
+    </div>`;
+  }
   return `<form class="card add-ex-form" id="add-ex-form" autocomplete="off">
     <h2>Novo exercício em ${esc(g.label)}</h2>
     <div class="field"><label for="cx-name">Nome</label><input type="text" id="cx-name" maxlength="40" placeholder="ex: Leg Press foco quadríceps" required></div>
@@ -241,7 +284,6 @@ function renderTreino() {
         <div class="rest-box">
           <div class="rest-head">${icon('timer', 16)}<span>Descanso recomendado: <b>${rest.range}</b></span></div>
           <button class="rest-start" data-action="rest-start" data-sec="${rest.sec}" data-ex="${esc(ex.name)}">${icon('play', 15)}Iniciar ${fmtClock(rest.sec)}</button>
-          <details class="rest-why"><summary>Porquê este tempo?</summary><p>${esc(rest.why)}</p></details>
         </div>` : '';
     const removeHtml = ex.custom
       ? (state.confirm === `cex:${ex.id}`
@@ -379,7 +421,8 @@ async function saveCustomExercise(form) {
   const kind = $('cx-kind').value;
   const flash = $('cx-flash');
   if (name.length < 2) { flash.textContent = 'Escreve o nome do exercício.'; return; }
-  if (exercisesOf(state.group).some((e) => e.name.toLowerCase() === name.toLowerCase())) { flash.textContent = errorMessage('duplicate'); return; }
+  const taken = [...GROUPS[state.group].exercises.map((e) => e.name), ...state.data.custom.filter((c) => c.group_key === state.group).map((c) => c.name)];
+  if (taken.some((n) => n.toLowerCase() === name.toLowerCase())) { flash.textContent = errorMessage('duplicate'); return; }
   try {
     await api.addCustomExercise(uid(), state.pin, {
       group_key: state.group, name, kind, effort: $('cx-effort').value, distance_unit: kind === 'time' ? $('cx-dist').value : ''
@@ -393,6 +436,27 @@ async function saveCustomExercise(form) {
     scrollToAndFocus('.exercise.open');
   } catch (e) {
     flash.textContent = errorMessage(e.code);
+  }
+}
+
+async function addSuggestion(btn) {
+  const ex = GROUPS[state.group].exercises.find((e) => e.name === btn.dataset.name);
+  if (!ex) return;
+  btn.disabled = true;
+  try {
+    await api.addCustomExercise(uid(), state.pin, {
+      group_key: state.group, name: ex.name, kind: ex.kind || GROUPS[state.group].kind, effort: ex.effort, distance_unit: ex.distanceUnit || ''
+    });
+    state.addingExercise = false;
+    state.openExercise = ex.name;
+    await refreshData();
+    render();
+    popSuccess();
+    burst(innerWidth / 2, innerHeight / 2, 24);
+    scrollToAndFocus('.exercise.open');
+  } catch (e) {
+    btn.disabled = false;
+    toast(errorMessage(e.code));
   }
 }
 
@@ -482,16 +546,16 @@ function buildOpinion(entries) {
   const bits = [];
   if (last.bmi != null) bits.push(`BMI de ${num(last.bmi)}`);
   if (last.body_fat != null) bits.push(`${num(last.body_fat)}% de gordura corporal`);
-  const intro = bits.length ? `Com ${bits.join(' e ')}` : 'Com estes valores';
+  const intro = bits.length ? `Com ${bits.join(' e ')}` : 'Com estes números';
   const lines = [];
-  if (focus === 'hipertrofia') lines.push(`${intro}, o foco é ganhar massa muscular de forma controlada: sobrecarga progressiva nos treinos e proteína suficiente em todas as refeições.`);
-  else if (focus === 'definicao') lines.push(`${intro}, o foco é reduzir gordura de forma gradual, mantendo (ou até ganhando) massa muscular ao mesmo tempo.`);
-  else lines.push(`${intro}, o foco é manter hábitos saudáveis e regulares: treino, alimentação equilibrada e bom sono.`);
+  if (focus === 'hipertrofia') lines.push(`${intro}, o teu corpo está oficialmente em modo "obra em curso", e nós adoramos obras (de capacete, claro). A missão é ganhar músculo com calma: sobrecarga progressiva e proteína em todas as refeições, porque o músculo não se constrói só com boas intenções.`);
+  else if (focus === 'definicao') lines.push(`${intro}, estamos em missão "derreter gordura sem derreter a paciência". Défice ligeiro, proteína alta e pesos com personalidade, que o músculo é o melhor amigo da definição e nunca te deixa ficar mal.`);
+  else lines.push(`${intro}, estás em modo "manutenção premium". Treino a sério, comida a sério e sono a sério, e o resto vem por arrasto (com muito menos drama).`);
   if (last.visceral != null) {
     const v = Number(last.visceral);
-    if (v <= 9) lines.push(`A gordura visceral está num valor normal (${v}), sem preocupação nessa área.`);
-    else if (v < 15) lines.push(`A gordura visceral está elevada (${v}) — cardio regular e um ligeiro ajuste na alimentação ajudam, sem cortes drásticos.`);
-    else lines.push(`A gordura visceral está muito elevada (${v}) — vale a pena falar com um profissional de saúde.`);
+    if (v <= 9) lines.push(`Gordura visceral em ${v}: dentro do normal! Os teus órgãos mandam beijinhos e pedem que não mudes nada.`);
+    else if (v < 15) lines.push(`Gordura visceral em ${v}: um bocadinho acima do ideal. Os teus órgãos pedem, com toda a simpatia, mais cardio e menos stress. Sem cortes drásticos, nem de comida nem de paciência.`);
+    else lines.push(`Gordura visceral em ${v}: bastante elevada. Vale mesmo a pena falar com um profissional de saúde. Os teus órgãos agradecem a atenção e prometem portar-se bem.`);
   }
   const paragraphs = lines.map((l) => `<p>${esc(l)}</p>`);
   if (entries.length > 1) {
@@ -501,7 +565,13 @@ function buildOpinion(entries) {
       return `${metricDef(k)[1].toLowerCase()} ${d > 0 ? '+' : ''}${d}${u}`;
     };
     const parts = [diff('weight', 'kg'), diff('body_fat', '%'), diff('muscle', 'kg')].filter(Boolean);
-    if (parts.length) paragraphs.push(`<p class="opinion-trend">${icon('trend', 16)}<span>Desde ${fmtDate(first.date)}: ${esc(parts.join(' · '))}.</span></p>`);
+    const dMuscle = first.muscle != null && last.muscle != null ? last.muscle - first.muscle : 0;
+    const dFat = first.body_fat != null && last.body_fat != null ? last.body_fat - first.body_fat : 0;
+    const quip = dMuscle > 0 && dFat < 0 ? ' O músculo sobe e a gordura faz as malas: isto é cinema.'
+      : dMuscle > 0 ? ' O músculo anda em alta, e nós a aplaudir.'
+        : dFat < 0 ? ' A gordura anda a fazer as malas.'
+          : ' Os números mexem-se devagar, e o que conta é a tendência.';
+    if (parts.length) paragraphs.push(`<p class="opinion-trend">${icon('trend', 16)}<span>Desde ${fmtDate(first.date)}: ${esc(parts.join(' · '))}.${esc(quip)}</span></p>`);
   }
   return paragraphs.join('');
 }
@@ -559,7 +629,7 @@ function renderMedicao() {
       </div>
       ${state.showMeanings ? `<div class="meaning-box">${MEANINGS.map(([k, v]) => `<div class="m-item"><b>${k}:</b> ${v}</div>`).join('')}</div>` : ''}
       <div class="opinion-box">
-        <div class="o-title">${icon('message', 16)}A nossa opinião</div>
+        <div class="o-title">${icon('message', 16)}A nossa opinião (honesta e ligeiramente dramática)</div>
         ${buildOpinion(entries)}
       </div>
     </div>
@@ -822,6 +892,23 @@ function trainedCount(key) {
 
 const VERDICT_ICON = { empty: 'sparkles', few: 'leaf', good: 'trend', goal: 'flame' };
 
+// Cargas do dia: uma linha por exercício (com todas as séries juntas), agrupadas por tipo de exercício.
+function dayLoadsHtml(logs) {
+  const order = [...Object.keys(GROUPS), 'outros'];
+  const groups = new Map();
+  for (const l of logs.slice().sort((a, b) => (a.id ?? 0) - (b.id ?? 0))) {
+    const gk = groupOf(l.exercise);
+    if (!groups.has(gk)) groups.set(gk, new Map());
+    const byEx = groups.get(gk);
+    if (!byEx.has(l.exercise)) byEx.set(l.exercise, []);
+    byEx.get(l.exercise).push(l);
+  }
+  return order.filter((k) => groups.has(k)).map((k) => `
+    <div class="dd-group"><div class="dd-group-title">${k === 'outros' ? 'Outros' : esc(GROUPS[k].label)}</div>
+      ${[...groups.get(k)].map(([name, ls]) => `<div class="dd-log"><span>${esc(name)}</span><span class="dd-val">${ls.map(logChips).join('')}</span></div>`).join('')}
+    </div>`).join('');
+}
+
 function dayDetailHtml(iso) {
   if (!iso) return '<div class="dd-empty">Toca num dia para ver o que fizeste.</div>';
   const logs = state.data.logs.filter((l) => l.date === iso);
@@ -829,9 +916,7 @@ function dayDetailHtml(iso) {
   const [, m, d] = iso.split('-').map(Number);
   return `
     <div class="dd-head"><b>${d} de ${MONTH_NAMES[m - 1].toLowerCase()}</b><span class="dd-chip${marked ? ' on' : ''}">${marked ? 'Dia de treino' : 'Sem treino'}</span></div>
-    ${logs.length
-      ? logs.map((l) => `<div class="dd-log"><span>${esc(l.exercise)}</span><span class="dd-val">${logChips(l)}</span></div>`).join('')
-      : '<div class="dd-empty">Sem registos neste dia.</div>'}
+    ${logs.length ? dayLoadsHtml(logs) : '<div class="dd-empty">Sem registos neste dia.</div>'}
     ${logs.length
       ? '<div class="dd-note">Marcado automaticamente pelos teus registos.</div>'
       : `<button class="dd-toggle" data-action="toggle-day" data-date="${iso}">${marked ? 'Desmarcar dia de treino' : 'Marcar como dia de treino'}</button>`}`;
@@ -893,8 +978,6 @@ function renderProgresso() {
       <div class="story-mission">${icon('target', 16)}<span>${esc(story.mission)}</span></div>
     </div>
 
-    ${bestsHtml}
-
     <div class="card">
       <div class="cal-summary">
         <div class="ring">
@@ -914,7 +997,9 @@ function renderProgresso() {
         ${cells}
       </div>
       <div class="day-detail" id="day-detail">${dayDetailHtml(state.selectedDay)}</div>
-    </div>`;
+    </div>
+
+    ${bestsHtml}`;
 }
 
 function goalCardHtml(key, goal) {
@@ -1090,7 +1175,9 @@ function onClick(ev) {
     case 'edit-meas': state.editingMeas = d.date; state.confirm = null; render(); scrollToAndFocus('#meas-form'); return;
     case 'cancel-meas': state.editingMeas = null; render(); return;
     case 'del-meas': state.confirm = `meas:${d.date}`; render(); return;
-    case 'add-ex-open': state.addingExercise = true; render(); scrollToAndFocus('#add-ex-form'); return;
+    case 'add-ex-open': state.addingExercise = 'menu'; render(); scrollToAndFocus('#add-ex-menu'); return;
+    case 'add-ex-custom': state.addingExercise = 'custom'; render(); scrollToAndFocus('#add-ex-form'); return;
+    case 'add-suggest': addSuggestion(el); return;
     case 'add-ex-cancel': state.addingExercise = false; render(); return;
     case 'del-cex': state.confirm = `cex:${d.id}`; render(); return;
     case 'del-no': state.confirm = null; render(); return;

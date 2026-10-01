@@ -50,8 +50,8 @@ button { font-family:inherit; color:inherit; }
 .who-text { min-width:0; }
 @font-face { font-family:'Poppins'; font-weight:500; font-style:italic; font-display:swap; src:url('../fonts/poppins-500-italic.woff2') format('woff2'); }
 .eyebrow { display:flex; flex-direction:column; line-height:1.25; }
-.eyebrow .hey { font-weight:700; font-size:13.5px; color:var(--pinkDark); }
-.eyebrow .aka { font-style:italic; font-weight:500; font-size:11px; color:#8A74C4; }
+.eyebrow .hey { font-weight:700; font-size:16px; color:var(--pinkDark); }
+.eyebrow .aka { font-style:italic; font-weight:500; font-size:12px; color:#E27FA8; }
 .brand-h1 { font-weight:700; font-size:18px; line-height:1.2; letter-spacing:-.01em; }
 .top-actions { display:flex; gap:8px; }
 .icon-btn { width:40px; height:40px; display:grid; place-items:center; border:1px solid var(--glassBorder); background:var(--glass); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-radius:14px; color:var(--pinkDark); cursor:pointer; box-shadow:0 4px 14px rgba(181,121,142,.12); transition:transform .15s var(--ease); }
@@ -256,9 +256,6 @@ button { font-family:inherit; color:inherit; }
 .rest-head b { font-weight:700; }
 .rest-start { display:inline-flex; align-items:center; gap:7px; font-weight:600; font-size:12.5px; padding:9px 16px; border-radius:14px; border:none; background:var(--white); color:var(--mintDark); cursor:pointer; box-shadow:0 4px 12px rgba(46,110,86,.15); transition:transform .15s var(--ease); }
 .rest-start:active { transform:scale(.94); }
-.rest-why { margin-top:10px; font-size:11.5px; color:var(--soft); }
-.rest-why summary { cursor:pointer; font-weight:500; color:var(--mintDark); }
-.rest-why p { margin-top:6px; line-height:1.6; }
 .refs summary { display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; font-size:13px; color:var(--pinkDeep); }
 .refs p { font-size:12px; color:var(--soft); line-height:1.6; margin:10px 0 6px; }
 .refs ul { padding-left:18px; }
@@ -436,6 +433,22 @@ button { font-family:inherit; color:inherit; }
 .goal-chip-btn:active { transform:scale(.9); background:var(--pink); }
 .link-btn { margin-left:6px; padding:0; border:none; background:none; color:var(--pinkDark); font-weight:600; font-size:11.5px; text-decoration:underline; cursor:pointer; }
 .nav-btn.dot::after { content:''; position:absolute; top:7px; left:calc(50% + 8px); width:9px; height:9px; border-radius:50%; background:#E8749A; border:2px solid var(--white); animation:pop-in .5s var(--ease); }
+
+/* ---------- adicionar exercícios ---------- */
+.sugg-title { font-weight:600; font-size:12px; color:var(--pinkDark); margin:4px 0 8px; }
+.sugg-list { display:flex; flex-direction:column; gap:8px; max-height:340px; overflow-y:auto; margin-bottom:12px; }
+.sugg-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:16px; background:#FBF3F7; }
+.sugg-row:nth-child(even) { background:#F3EFFA; }
+.sugg-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; }
+.sugg-name { font-weight:600; font-size:13px; }
+.sugg-sub { font-size:11px; color:var(--gray); }
+.sugg-add { display:inline-flex; align-items:center; gap:5px; flex-shrink:0; padding:7px 13px; border-radius:999px; border:none; background:linear-gradient(135deg,#C98BA3,var(--pinkDark)); color:var(--white); font-weight:600; font-size:11.5px; cursor:pointer; transition:transform .12s var(--ease); }
+.sugg-add:active { transform:scale(.9); }
+.sugg-none { font-size:12px; color:var(--gray); margin-bottom:12px; }
+
+/* ---------- detalhe do dia por exercício ---------- */
+.dd-group { margin-top:8px; }
+.dd-group-title { font-size:10.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--pinkDark); margin-bottom:2px; }
 
 /* ---------- toast e confetti ---------- */
 .toast { position:fixed; left:50%; bottom:calc(158px + env(safe-area-inset-bottom,0px)); transform:translate(-50%,20px); display:flex; align-items:center; gap:8px; background:var(--ink); color:var(--white); font-size:12.5px; font-weight:500; padding:11px 16px; border-radius:16px; opacity:0; pointer-events:none; transition:opacity .25s, transform .25s var(--ease); max-width:calc(100% - 32px); z-index:200; box-shadow:0 10px 26px rgba(74,59,74,.3); }

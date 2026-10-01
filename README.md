@@ -1,4 +1,4 @@
-# no ifs, just good butts 💋
+# No ifs, just butts
 
 App de treino, medição corporal, alimentação e calendário para a Mariana e a Élia.
 HTML/CSS/JS puro (sem build) + base de dados Supabase, publicada no GitHub Pages.
