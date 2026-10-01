@@ -4,7 +4,7 @@ import {
   WATER, PROTEIN_G_PER_KG, FOOD_GUIDE, FOOD_LIMIT
 } from './data.js';
 import { icon } from './icons.js';
-import { burst, haptic, pop, popSuccess, popDone, isMuted, setMuted } from './fx.js';
+import { burst, sparkle, trail, haptic, pop, popSuccess, popDone, isMuted, setMuted } from './fx.js';
 import { summarize, buildStory, rowsOfLog, bestSet, bestHold, MONTH_NAMES } from './progress.js';
 import { createTimer } from './timer.js';
 
@@ -207,11 +207,18 @@ function planCard(plan, cls) {
 function tabsHtml() {
   const active = TABS.find((t) => t.key === state.group || (t.children || []).includes(state.group));
   const top = TABS.map((t) => {
-    const target = t.children ? (t.children.includes(state.group) ? state.group : t.children[0]) : t.key;
-    return `<button class="group-btn${t === active ? ' active' : ''}" data-action="group" data-group="${target}">${t.label}</button>`;
+    const isActive = t === active || (t.children && state.group === t.key);
+    return `<button class="group-btn${isActive ? ' active' : ''}" data-action="group" data-group="${t.key}">${t.label}</button>`;
   }).join('');
+  const picking = state.group === 'bracos';
   const sub = active?.children
-    ? `<div class="groups sub">${active.children.map((k) => `<button class="group-btn sub${k === state.group ? ' active' : ''}" data-action="group" data-group="${k}">${GROUPS[k].label}</button>`).join('')}</div>`
+    ? `<div class="arm-choose${picking ? ' pick' : ''}">
+        ${picking ? '<div class="arm-title">Qual músculo vais treinar?</div>' : ''}
+        <div class="arm-grid">${active.children.map((k) => {
+    const n = exercisesOf(k).length;
+    return `<button class="arm-btn t-${k}${k === state.group ? ' active' : ''}" data-action="group" data-group="${k}"><span class="arm-name">${GROUPS[k].label}</span><span class="arm-sub">${n} ${n === 1 ? 'exercício' : 'exercícios'}</span></button>`;
+  }).join('')}</div>
+      </div>`
     : '';
   return `<div class="groups">${top}</div>${sub}`;
 }
@@ -265,6 +272,7 @@ function addExerciseHtml() {
 }
 
 function renderTreino() {
+  if (state.group === 'bracos') { pageEl.innerHTML = tabsHtml(); return; } // só a escolha do músculo
   const group = GROUPS[state.group];
   const plan = WARMUP_STRETCH[state.group];
   const exercises = exercisesOf(state.group);
@@ -622,14 +630,14 @@ function renderMedicao() {
     <div class="card">
       <h2>Medição Corporal</h2>
       <div class="stats-sub">Última medição: ${fmtDate(last.date)}</div>
-      <div class="stats-grid">${METRICS.map(([key, label, unit]) => `<div class="stat"><span>${label}</span><b>${num(last[key])}${last[key] != null ? unit : ''}</b></div>`).join('')}</div>
+      <div class="stats-grid">${METRICS.map(([key, label, unit], si) => `<div class="stat" style="--k:${si}"><span>${label}</span><b>${num(last[key])}${last[key] != null ? unit : ''}</b></div>`).join('')}</div>
       <div class="chip-row">
         <span class="goal-chip">${icon('target', 15)}${esc((FOCUS[state.user.focus] || FOCUS.saude).goal)}</span>
         <button class="meaning-toggle" data-action="toggle-meanings">${icon('info', 15)}${state.showMeanings ? 'Fechar significados' : 'O que significa cada medição?'}</button>
       </div>
       ${state.showMeanings ? `<div class="meaning-box">${MEANINGS.map(([k, v]) => `<div class="m-item"><b>${k}:</b> ${v}</div>`).join('')}</div>` : ''}
       <div class="opinion-box">
-        <div class="o-title">${icon('message', 16)}A nossa opinião (honesta e ligeiramente dramática)</div>
+        <div class="o-title">${icon('message', 16)}A nossa opinião</div>
         ${buildOpinion(entries)}
       </div>
     </div>
@@ -714,7 +722,7 @@ function renderAlimentacao() {
   })() : '<p class="diet-note">Regista o teu peso na secção Medição para veres a tua proteína diária de referência.</p>';
 
   const foodHtml = FOOD_GUIDE.map((c, i) => `
-    <details class="food"${i === 0 ? ' open' : ''}>
+    <details class="food" style="--k:${i}">
       <summary>${esc(c.title)}</summary>
       <div class="food-chips">${c.items.map((it) => `<span class="food-chip">${esc(it)}</span>`).join('')}</div>
       <p class="food-portion"><b>Quantidade:</b> ${esc(c.portion[focus])}</p>
@@ -723,7 +731,7 @@ function renderAlimentacao() {
       <div class="food-chips">${FOOD_LIMIT.items.map((it) => `<span class="food-chip">${esc(it)}</span>`).join('')}</div></details>`;
 
   pageEl.innerHTML = `
-    <div class="card hydration">
+    <div class="card hydration tilt">
       <h2>${icon('droplet', 18)} Hidratação</h2>
       ${waterHtml}
     </div>
@@ -939,15 +947,20 @@ function renderProgresso() {
   const chips = [`<span class="s-chip">${icon('calendar', 14)}${goal ? `${count}/${goal} treinos` : `${count} ${count === 1 ? 'treino' : 'treinos'}`}</span>`];
   if (sum.minutes > 0) chips.push(`<span class="s-chip">${icon('activity', 14)}${sum.minutes} min de cardio/desporto</span>`);
 
+  const bestGroups = new Map();
+  sum.bests.forEach((b) => { const k = groupOf(b.name); if (!bestGroups.has(k)) bestGroups.set(k, []); bestGroups.get(k).push(b); });
+  let bestIdx = 0;
   const bestsHtml = sum.bests.length ? `
     <div class="card">
       <h2>Melhor carga de cada exercício</h2>
-      <div class="hl-list">${sum.bests.map((b) => `
-        <div class="hl-row">
+      ${[...Object.keys(GROUPS), 'outros'].filter((k) => bestGroups.has(k)).map((k) => `
+      <div class="bl-group"><div class="dd-group-title">${k === 'outros' ? 'Outros' : esc(GROUPS[k].label)}</div>
+      <div class="hl-list">${bestGroups.get(k).map((b) => `
+        <div class="hl-row" style="--k:${bestIdx++}">
           <span class="hl-ico">${icon('star', 16)}</span>
           <span class="hl-name">${esc(b.name)}</span>
           <span class="hl-val"><b>${ptNum(b.weight, 2)} kg × ${b.reps}</b> <em>${fmtShort(b.date)}</em></span>
-        </div>`).join('')}</div>
+        </div>`).join('')}</div></div>`).join('')}
     </div>` : '';
 
   const logDays = new Set(state.data.logs.map((l) => l.date));
@@ -958,7 +971,7 @@ function renderProgresso() {
     const iso = `${key}-${pad2(d)}`;
     const future = iso > t;
     const done = !future && (state.data.gymDays.has(iso) || logDays.has(iso));
-    cells += `<button class="cal-day${done ? ' done' : ''}${iso === t ? ' today' : ''}${iso === state.selectedDay ? ' sel' : ''}${future ? ' future' : ''}" data-action="select-day" data-date="${iso}" aria-pressed="${done}"${future ? ' disabled aria-label="Ainda não chegou"' : ''}>${d}</button>`;
+    cells += `<button style="--k:${d}" class="cal-day${done ? ' done' : ''}${iso === t ? ' today' : ''}${iso === state.selectedDay ? ' sel' : ''}${future ? ' future' : ''}" data-action="select-day" data-date="${iso}" aria-pressed="${done}"${future ? ' disabled aria-label="Ainda não chegou"' : ''}>${d}</button>`;
   }
 
   const showGoalCard = isCurrent && (!goal || state.editingGoal);
@@ -971,7 +984,7 @@ function renderProgresso() {
       <button data-action="cal-next" aria-label="Mês seguinte"${isCurrent ? ' disabled' : ''}>${icon('chevron-right', 18)}</button>
     </div>
 
-    <div class="card story ${sum.verdict}">
+    <div class="card story tilt ${sum.verdict}">
       <div class="story-head"><span class="story-badge">${icon(VERDICT_ICON[sum.verdict], 22)}</span><h2 class="story-title">${esc(story.title)}</h2></div>
       ${story.lines.map((l) => `<p>${esc(l)}</p>`).join('')}
       <div class="story-chips">${chips.join('')}</div>
@@ -1097,9 +1110,9 @@ async function toggleDay(iso) {
 // ---------- navegação e eventos ----------
 const PAGES = [
   ['treino', 'Treino', 'dumbbell'],
-  ['medicao', 'Medição', 'activity'],
   ['alimentacao', 'Alimentação', 'leaf'],
   ['sono', 'Sono', 'moon'],
+  ['medicao', 'Medições', 'activity'],
   ['progresso', 'Progresso', 'trend']
 ];
 
@@ -1125,6 +1138,23 @@ function render(fresh = false) {
   pageEl.classList.toggle('fresh', fresh);
   RENDERERS[state.page]();
   if (fresh) [...pageEl.children].forEach((el, i) => el.style.setProperty('--n', i));
+  if (fresh && state.page === 'progresso') celebrateGoal();
+}
+
+// Chuva de confetti (uma vez por mês e por sessão) quando a meta do mês foi batida
+function celebrateGoal() {
+  const key = monthKeyOf(state.calMonth);
+  const goal = goalFor(key);
+  if (!goal || trainedCount(key) < goal) return;
+  const mark = `celebrado-${uid()}-${key}`;
+  try { if (sessionStorage.getItem(mark)) return; sessionStorage.setItem(mark, '1'); } catch { /* ignora */ }
+  setTimeout(() => {
+    const ring = $('ring-num');
+    if (!ring) return;
+    const [cx, cy] = centerOf(ring);
+    burst(cx, cy, 70);
+    popDone();
+  }, 700);
 }
 
 function scrollToAndFocus(selector) {
@@ -1324,6 +1354,52 @@ document.addEventListener('pointerdown', (e) => {
   pop(Number(b.dataset.pitch) || 1);
   haptic(6);
 }, { passive: true });
+
+// ---------- efeitos visuais ----------
+const RIPPLE = '.save-btn, .log-save, .rest-start, .add-ex-btn, .sugg-add, .goal-chip-btn, .group-btn, .arm-btn, .dd-toggle, .metric-btn, .moon-btn, .log-cancel, .add-set';
+
+// pontinhos de luz a subir pelo fundo
+(function sparks() {
+  const aurora = document.querySelector('.aurora');
+  if (!aurora || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  for (let i = 0; i < 16; i++) {
+    const el = document.createElement('i');
+    el.className = 'spark';
+    el.style.cssText = `left:${Math.random() * 100}%;--s:${(3 + Math.random() * 5).toFixed(1)}px;--d:${(14 + Math.random() * 16).toFixed(1)}s;--delay:${(-Math.random() * 26).toFixed(1)}s;--dx:${((Math.random() - 0.5) * 120).toFixed(0)}px`;
+    aurora.appendChild(el);
+  }
+})();
+
+// onda de luz e faíscas ao tocar nos botões
+document.addEventListener('pointerdown', (e) => {
+  const host = e.target.closest(RIPPLE);
+  if (host && !host.disabled) {
+    const r = host.getBoundingClientRect();
+    const size = Math.max(r.width, r.height) * 2;
+    const dot = document.createElement('span');
+    dot.className = 'ripple';
+    dot.style.cssText = `width:${size}px;height:${size}px;left:${e.clientX - r.left - size / 2}px;top:${e.clientY - r.top - size / 2}px`;
+    host.appendChild(dot);
+    setTimeout(() => dot.remove(), 650);
+  }
+  const btn = e.target.closest('button');
+  if (btn && !btn.disabled) sparkle(e.clientX, e.clientY);
+}, { passive: true });
+
+// rasto de brilhos atrás do rato (só com rato) e cartões que acompanham o cursor
+addEventListener('pointermove', (e) => {
+  if (e.pointerType === 'mouse') trail(e.clientX, e.clientY);
+  const card = e.target.closest ? e.target.closest('.tilt') : null;
+  if (card && e.pointerType === 'mouse') {
+    const r = card.getBoundingClientRect();
+    card.style.setProperty('--ry', (((e.clientX - r.left) / r.width - 0.5) * 7).toFixed(2) + 'deg');
+    card.style.setProperty('--rx', ((0.5 - (e.clientY - r.top) / r.height) * 5).toFixed(2) + 'deg');
+  }
+}, { passive: true });
+pageEl.addEventListener('pointerout', (e) => {
+  const card = e.target.closest ? e.target.closest('.tilt') : null;
+  if (card && !card.contains(e.relatedTarget)) { card.style.removeProperty('--rx'); card.style.removeProperty('--ry'); }
+});
 
 // o fundo mexe-se ligeiramente com o rato / dedo
 addEventListener('pointermove', (e) => {

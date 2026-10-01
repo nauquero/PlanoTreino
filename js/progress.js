@@ -58,34 +58,44 @@ export function summarize({ logs, gymDays }, key, goal, today) {
 
 // ---------- texto ----------
 
-function hash(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0; return h; }
 const fill = (t, vars) => t.replace(/\{(\w+)\}/g, (_, k) => vars[k]);
 
-const TITLES = {
-  empty: ['Este mês ainda é uma tela em branco', 'Capítulo em branco, potencial de bestseller'],
-  few: ['A semente está plantada', 'Os grandes começos fazem pouco barulho'],
-  good: ['A caminho da meta, e a fazer figura', 'Constância é o teu novo superpoder'],
-  goal: ['Meta batida: aplausos de pé!', 'Isto já é abuso de poder!']
-};
-
-const STORY = {
-  empty: [
-    '{name}, ainda não há registos neste mês. Os grandes filmes também começam com o ecrã preto, por isso regista o primeiro treino e deixa o teu eu do futuro agradecer.',
-    'Nada registado por aqui, {name}, e não faz mal: o melhor momento para começar é agora, o segundo melhor é logo a seguir. Um treino, mesmo curtinho, já muda o enredo.'
-  ],
-  few: [
-    '{name}, já há treinos registados e isso muda tudo: o mais difícil (começar) já está feito. Agora é só dar continuidade, um treino de cada vez. Tens {dias} de treino.',
-    'Bom começo, {name}! Cada treino é um voto na pessoa que queres ser, e tu já votaste {dias}.'
-  ],
-  good: [
-    '{name}, estás a dar o exemplo: o ginásio já te trata pelo nome e o sofá já nem espera por ti. Já vais com {dias} de treino, continua assim!',
-    'Que mês bonito, {name}! A consistência está a trabalhar a teu favor, mesmo nos dias em que a motivação foi de férias. {dias} de treino até agora.'
-  ],
-  goal: [
-    '{name}, objetivo do mês cumprido com {dias} de treino! O sofá abriu um processo contra ti e o ginásio quer pôr o teu nome numa placa.',
-    'Missão cumprida, {name}! Atingiste a meta do mês ({dias} de treino) e o teu eu do futuro mandou um abraço.'
-  ]
-};
+// Uma mensagem diferente para cada número de treinos no mês (0 a 31).
+// {name} = nome da pessoa, {dias} = "1 dia" / "5 dias".
+const ENTRIES = [
+  ['Este mês ainda é uma tela em branco', '{name}, ainda não há treinos registados neste mês. Os grandes filmes também começam com o ecrã preto: regista o primeiro treino e deixa o teu eu do futuro agradecer.'],
+  ['O primeiro passo está dado', '{dias} de treino: a parte mais difícil (começar) já ficou para trás. O sofá ficou a olhar para a porta sem perceber nada.'],
+  ['Já há aquecimento!', '{dias} de treino. Dois é o princípio de um hábito, e um hábito é o princípio de uma lenda. {name}, o ginásio já está a decorar o teu nome.'],
+  ['A constância está a acordar', '{dias} de treino! O corpo começa a desconfiar que isto é para continuar, e o sofá já pediu transferência.'],
+  ['Quatro sinais de vida (muito fit)', '{dias} de treino, {name}. Já dá para dizer que isto é uma rotina e não uma boa intenção de segunda-feira.'],
+  ['Cinco estrelas, com esforço incluído', '{dias} de treino. A semana de trabalho de quem se leva a sério: cinco dias de dedicação e muito orgulho.'],
+  ['Meia dúzia de suor', '{dias} de treino. Meia dúzia de razões para sorrir ao espelho e uma dúzia de razões para beber água.'],
+  ['Uma semana inteira de energia', '{dias} de treino. Se fossem seguidos, era uma semana completa! Mesmo espaçados, o resultado é o mesmo: estás a ficar cada vez mais forte.'],
+  ['Oito treinos, oito vitórias', '{dias} de treino, e cada um foi uma discussão ganha à preguiça. Resultado final: preguiça 0, {name} 8.'],
+  ['Quase em dois dígitos', '{dias} de treino. Falta só um para o clube dos dois dígitos, e esse clube tem muito bom ambiente.'],
+  ['Dois dígitos, que classe!', '{dias} de treino. Chegaste ao clube dos dois dígitos, e o lugar já estava reservado para ti.'],
+  ['Onze a caminho da dúzia', '{dias} de treino, {name}. O ginásio já te guarda o lugar favorito, e a máquina já tem saudades tuas.'],
+  ['Uma dúzia certinha', '{dias} de treino: exatamente uma dúzia, e da boa (sem ovos partidos).'],
+  ['Treze: a sorte de quem treina', '{dias} de treino. Há quem tenha medo do número 13; os teus músculos preferem chamar-lhe sorte treinada.'],
+  ['Duas semanas de pura dedicação', '{dias} de treino. Duas semanas de rotina e o corpo já começou a reparar nas mudanças (e a gostar delas).'],
+  ['Meio mês, meio mundo conquistado', '{dias} de treino, {name}. Tens um ritmo de dar inveja ao relógio.'],
+  ['Dezasseis e a ganhar balanço', '{dias} de treino. A inércia perdeu a batalha: quem está em movimento tende a ficar em movimento!'],
+  ['Dezassete: o músculo já te conhece', '{dias} de treino. O teu músculo já sabe o teu nome, o teu horário e a tua playlist favorita.'],
+  ['Dezoito: maioridade desportiva', '{dias} de treino. Chegaste à maioridade desportiva: já podes votar nas músicas do ginásio.'],
+  ['Dezanove: a um passo dos vinte', '{dias} de treino. A um treino de uma marca redonda, e o teu eu do futuro já está a preparar o discurso.'],
+  ['Vinte treinos: nível lenda', '{dias} de treino. Isto já merecia cartão de sócio vitalício e um lugar na parede da fama.'],
+  ['Vinte e um: ritmo de campeão', '{dias} de treino, {name}. Com esta constância és oficialmente imparável.'],
+  ['Vinte e dois e sem travões', '{dias} de treino. O teu ritmo está tão bom que o calendário pediu um autógrafo.'],
+  ['Vinte e três: orgulho em modo máximo', '{dias} de treino. Se a constância tivesse um troféu, já estava a ser embrulhado com laço.'],
+  ['Vinte e quatro: a render o dia inteiro', '{dias} de treino. Se o mês fosse um jogo, estavas na ronda final com o troféu à vista.'],
+  ['Vinte e cinco: um quarto de século de força', '{dias} de treino. Isto é número de atleta de elite com horário de ginásio flexível.'],
+  ['Vinte e seis: a lenda está viva', '{dias} de treino, {name}. Fazem-se filmes com menos dedicação do que isto.'],
+  ['Vinte e sete: modo máquina', '{dias} de treino. O ginásio devia pagar-te comissão pelo ambiente que crias.'],
+  ['Vinte e oito: um fevereiro cheio', '{dias} de treino. Um por cada dia de um fevereiro cheio; só falta pedir um dia de bónus ao calendário.'],
+  ['Vinte e nove: a um fio da perfeição', '{dias} de treino. A consistência é tanta que o descanso te mandou uma mensagem a pedir atenção (dá-lhe um dia, ele merece).'],
+  ['Trinta: o mês quase inteiro', '{dias} de treino. Quase todos os dias do mês, {name}! O corpo agradece, a cabeça também, e a água do ginásio já te chama pelo nome.'],
+  ['Trinta e um: o mês completo', '{dias} de treino: um mês inteiro sem falhar! Lembra-te só de descansar também, que o músculo cresce na pausa.']
+];
 
 const MISSION = {
   hipertrofia: 'Próxima missão: mais 1–2 repetições ou um pouquinho mais de carga nos exercícios principais, com proteína a acompanhar. Sobrecarga progressiva é o teu superpoder.',
@@ -93,14 +103,21 @@ const MISSION = {
   saude: 'Próxima missão: manter a regularidade, mexer o corpo de formas que gostes e dormir bem. O resto vem por arrasto.'
 };
 
+export const STORY_VARIANTS = ENTRIES.length;
+
 export function buildStory(sum, { name, focus }) {
-  const h = hash(`${name}${sum.key}`);
-  const pick = (arr) => arr[h % arr.length];
-  const vars = { name, dias: sum.sessions === 1 ? '1 dia' : `${sum.sessions} dias` };
-  const lines = [fill(pick(STORY[sum.verdict]), vars)];
+  const n = Math.max(0, Math.min(sum.sessions, ENTRIES.length - 1));
+  const vars = { name, dias: n === 1 ? '1 dia' : `${n} dias` };
+  const [title, text] = ENTRIES[n];
+  const lines = [fill(text, vars)];
+  if (sum.goal) {
+    const left = sum.goal - sum.sessions;
+    if (left > 0) lines.push(`Faltam ${left} ${left === 1 ? 'treino' : 'treinos'} para a tua meta de ${sum.goal}.`);
+    else lines.push(`Meta de ${sum.goal} ${sum.goal === 1 ? 'dia' : 'dias'} batida! Que tal subir a fasquia no próximo mês?`);
+  }
   if (sum.bests.length) {
     lines.push(`${sum.bests.length === 1 ? '1 exercício com carga registada' : `${sum.bests.length} exercícios com carga registada`}: lá em baixo vês a tua melhor carga em cada um.`);
   }
   if (sum.minutes > 0) lines.push(`${sum.minutes} min de cardio e desporto: o teu coração mandou uma mensagem de agradecimento.`);
-  return { title: pick(TITLES[sum.verdict]), lines, mission: MISSION[focus] || MISSION.saude };
+  return { title, lines, mission: MISSION[focus] || MISSION.saude };
 }

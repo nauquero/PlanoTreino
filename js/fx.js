@@ -82,12 +82,12 @@ function tick() {
   ctx.clearRect(0, 0, innerWidth, innerHeight);
   parts = parts.filter((p) => p.life > 0 && p.y < innerHeight + 40);
   for (const p of parts) {
-    p.vy += 0.28;
+    p.vy += p.g ?? 0.28;
     p.vx *= 0.985;
     p.x += p.vx;
     p.y += p.vy;
     p.rot += p.vr;
-    p.life -= 0.016;
+    p.life -= p.decay ?? 0.016;
     ctx.save();
     ctx.globalAlpha = Math.max(p.life, 0);
     ctx.translate(p.x, p.y);
@@ -110,8 +110,37 @@ export function burst(x, y, count = 34) {
     parts.push({
       x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 4,
       size: 5 + Math.random() * 6, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4,
-      color: COLORS[(Math.random() * COLORS.length) | 0], round: Math.random() < 0.5, life: 1
+      color: COLORS[(Math.random() * COLORS.length) | 0], round: Math.random() < 0.5, life: 1, decay: 0.016, g: 0.28
     });
   }
+  if (!raf) raf = requestAnimationFrame(tick);
+}
+
+// pequenas faíscas ao tocar num botão
+export function sparkle(x, y, count = 7) {
+  if (reduceMotion()) return;
+  ensureCanvas();
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const v = 1.2 + Math.random() * 3;
+    parts.push({
+      x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 1, size: 3 + Math.random() * 3.5, rot: 0, vr: 0,
+      color: COLORS[(Math.random() * 4) | 0], round: true, life: 1, decay: 0.05, g: 0.06
+    });
+  }
+  if (!raf) raf = requestAnimationFrame(tick);
+}
+
+// rasto de brilhos atrás do rato
+let lastTrail = 0;
+export function trail(x, y) {
+  const now = performance.now();
+  if (reduceMotion() || now - lastTrail < 45) return;
+  lastTrail = now;
+  ensureCanvas();
+  parts.push({
+    x: x + (Math.random() - 0.5) * 6, y: y + (Math.random() - 0.5) * 6, vx: (Math.random() - 0.5) * 0.6, vy: 0.4 + Math.random() * 0.6,
+    size: 2.5 + Math.random() * 3, rot: 0, vr: 0, color: COLORS[(Math.random() * 4) | 0], round: true, life: 0.9, decay: 0.035, g: 0
+  });
   if (!raf) raf = requestAnimationFrame(tick);
 }

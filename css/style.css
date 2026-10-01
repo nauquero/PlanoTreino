@@ -28,7 +28,7 @@ button { font-family:inherit; color:inherit; }
 @keyframes drift { from { transform:translate(0,0) scale(1); } to { transform:translate(7%,9%) scale(1.14); } }
 
 /* ---------- animações base ---------- */
-@keyframes rise { from { opacity:0; transform:translateY(16px) scale(.98); } to { opacity:1; transform:none; } }
+@keyframes rise { from { opacity:0; transform:translateY(16px) scale(.98); } to { opacity:1; } }
 @keyframes pop-in { 0% { transform:scale(.6); opacity:0; } 60% { transform:scale(1.12); opacity:1; } 100% { transform:scale(1); } }
 @keyframes shake { 0%,100% { transform:translateX(0); } 20% { transform:translateX(-10px); } 40% { transform:translateX(9px); } 60% { transform:translateX(-6px); } 80% { transform:translateX(4px); } }
 @keyframes draw { to { stroke-dashoffset:0; } }
@@ -449,6 +449,57 @@ button { font-family:inherit; color:inherit; }
 /* ---------- detalhe do dia por exercício ---------- */
 .dd-group { margin-top:8px; }
 .dd-group-title { font-size:10.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--pinkDark); margin-bottom:2px; }
+
+/* ---------- Braços: escolher o músculo ---------- */
+.arm-choose { margin:2px 0 14px; padding:14px; border-radius:26px; background:var(--glass); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border:1px solid var(--glassBorder); box-shadow:var(--shadow); }
+.arm-choose.pick { background:linear-gradient(135deg,rgba(245,198,216,.75),rgba(217,207,240,.7)); animation:rise .5s var(--ease) both; }
+.arm-title { font-weight:700; font-size:15px; text-align:center; margin-bottom:12px; }
+.arm-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.arm-btn { display:flex; flex-direction:column; align-items:center; gap:4px; padding:14px 4px; border-radius:20px; border:2px solid transparent; background:rgba(255,255,255,.82); color:var(--ink); cursor:pointer; box-shadow:0 4px 14px rgba(181,121,142,.14); transition:transform .25s var(--ease), box-shadow .25s, background .25s; }
+.arm-choose.pick .arm-btn { padding:26px 4px; }
+.arm-btn.t-biceps { --c1:#F8CFE0; --c2:#E7A1BF; }
+.arm-btn.t-triceps { --c1:#DDD3F4; --c2:#B9A7E6; }
+.arm-btn.t-ombros { --c1:#CBEBDD; --c2:#9ED9C1; }
+.arm-name { font-weight:700; font-size:15px; letter-spacing:-.01em; }
+.arm-sub { font-size:10.5px; color:var(--gray); font-weight:500; }
+.arm-btn:hover { transform:translateY(-3px); box-shadow:0 12px 24px rgba(181,121,142,.24); }
+.arm-btn:active { transform:scale(.94); }
+.arm-btn.active { background:linear-gradient(135deg,var(--c1),var(--c2)); border-color:#fff; box-shadow:0 12px 26px rgba(181,121,142,.32); }
+.arm-btn.active .arm-sub { color:var(--soft); }
+
+/* ---------- mais efeitos visuais ---------- */
+/* onda de luz ao tocar nos botões */
+.save-btn, .log-save, .rest-start, .add-ex-btn, .sugg-add, .goal-chip-btn, .group-btn, .arm-btn, .dd-toggle, .metric-btn, .moon-btn, .log-cancel, .add-set { position:relative; overflow:hidden; }
+.ripple { position:absolute; border-radius:50%; pointer-events:none; background:rgba(255,255,255,.65); transform:scale(0); animation:ripple .65s ease-out forwards; }
+@keyframes ripple { to { transform:scale(1); opacity:0; } }
+
+/* pontinhos de luz a subir pelo fundo */
+.aurora .spark { position:absolute; bottom:-12px; width:var(--s); height:var(--s); border-radius:50%; background:#fff; box-shadow:0 0 10px 3px rgba(245,198,216,.85); opacity:0; animation:floatUp var(--d) linear var(--delay) infinite; }
+@keyframes floatUp { 0% { transform:translate(0,0); opacity:0; } 12% { opacity:.95; } 85% { opacity:.6; } 100% { transform:translate(var(--dx),-105vh); opacity:0; } }
+
+/* cartões que acompanham o cursor */
+.tilt { transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)); transition:transform .25s ease-out; }
+
+/* brilho que respira no resumo do mês e na meta nova */
+.story, .goal-card.first { position:relative; }
+.story::after, .goal-card.first::after { content:''; position:absolute; inset:0; border-radius:inherit; pointer-events:none; box-shadow:0 0 36px 6px rgba(245,198,216,.7); opacity:0; animation:glowPulse 4.5s ease-in-out infinite; }
+@keyframes glowPulse { 50% { opacity:.9; } }
+
+/* título com brilho a passar */
+#splash h1 span { background-image:linear-gradient(90deg,#C98BA3,#9C7FC9,#E27FA8,#C98BA3); background-size:250% 100%; animation:shimmerText 7s linear infinite; }
+@keyframes shimmerText { to { background-position:250% 0; } }
+
+/* água a ondular */
+.hydration { position:relative; overflow:hidden; }
+.hydration > * { position:relative; z-index:1; }
+.hydration::before { content:''; position:absolute; left:0; right:0; bottom:0; height:38px; background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='38' viewBox='0 0 160 38'%3E%3Cpath d='M0 19 Q20 3 40 19 T80 19 T120 19 T160 19 V38 H0Z' fill='white'/%3E%3C/svg%3E") repeat-x; background-size:160px 38px; opacity:.55; animation:wave 6s linear infinite; pointer-events:none; }
+@keyframes wave { to { background-position-x:160px; } }
+
+/* entradas escalonadas dentro dos cartões */
+@keyframes cell-in { from { opacity:0; transform:scale(.6) translateY(6px); } }
+.fresh .stat, .fresh .hl-row, .fresh .cal-day:not(.empty), .fresh .food { animation:cell-in .45s var(--ease) both; animation-delay:calc(.12s + var(--k,0) * 28ms); }
+@keyframes barGrow { from { transform:scaleY(0); } }
+.fresh .sbar { transform-box:fill-box; transform-origin:50% 100%; animation:barGrow .8s var(--ease) .25s both; }
 
 /* ---------- toast e confetti ---------- */
 .toast { position:fixed; left:50%; bottom:calc(158px + env(safe-area-inset-bottom,0px)); transform:translate(-50%,20px); display:flex; align-items:center; gap:8px; background:var(--ink); color:var(--white); font-size:12.5px; font-weight:500; padding:11px 16px; border-radius:16px; opacity:0; pointer-events:none; transition:opacity .25s, transform .25s var(--ease); max-width:calc(100% - 32px); z-index:200; box-shadow:0 10px 26px rgba(74,59,74,.3); }
