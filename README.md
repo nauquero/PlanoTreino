@@ -32,7 +32,7 @@ update public.profiles set failed_attempts = 0, locked_until = null where id = '
 ```
 
 ### Atualizar a base de dados (quando há novidades)
-Quando saírem funcionalidades novas que precisem da base de dados, corre o ficheiro `supabase/atualizar.sql` (ou, se já tinhas corrido uma versão anterior, o pequeno `supabase/atualizar-metas.sql`) no SQL Editor (cola tudo e **Run**). É seguro repetir e **não apaga dados nem PINs**. Inclui: apagar/corrigir, desportos, datas seguras, login por número, séries por dia, sono, exercícios personalizados, meta mensal e a limpeza de dias marcados no futuro.
+Quando saírem funcionalidades novas que precisem da base de dados, corre o ficheiro `supabase/atualizar.sql` (ou, se já tinhas corrido uma versão anterior, o pequeno `supabase/atualizar-metas.sql`) no SQL Editor (cola tudo e **Run**). É seguro repetir e **não apaga dados nem PINs**. Inclui: apagar/corrigir, desportos, datas seguras, login por utilizador, séries por dia, sono, exercícios personalizados, meta mensal e a limpeza de dias marcados no futuro.
 
 ### Pessoas e palavras-passe
 O login é por **nome de utilizador + palavra-passe** (o utilizador não distingue maiúsculas de minúsculas). A splash não mostra nomes. Cada pessoa só vê os seus dados.
@@ -69,7 +69,7 @@ O ícone está em `icons/` (podes trocá-lo mantendo os nomes e tamanhos); o cac
 ### Som e visual
 - Os botões fazem um "pop" (gerado no próprio browser, sem ficheiros de áudio). O botão do altifalante, no topo, liga e desliga o som e a preferência fica guardada. Em telemóveis com o modo silencioso ligado o iPhone pode não tocar.
 - O tipo de letra (Poppins) está em `fonts/`, por isso não depende de servidores externos.
-- A meta mensal do calendário (12 idas) está em `js/data.js` (`GYM_GOAL_PER_MONTH`).
+- A meta mensal é escolhida por cada pessoa na aba Progresso (as sugestões rápidas 8/12/16/20 estão em `js/data.js`, `GOAL_SUGGESTIONS`).
 
 ## 3. Testar localmente
 
@@ -79,7 +79,7 @@ Os módulos ES não funcionam com `file://`; usa um servidor local:
 npx http-server -p 8080     # ou: python3 -m http.server 8080
 ```
 
-Sem o `config.js` preenchido, o site corre em **modo demo** (dados só no browser; entra com número `1` e uma palavra-passe de 4+ caracteres; aparece um aviso amarelo).
+Sem o `config.js` preenchido, o site corre em **modo demo** (dados só no browser; entra com qualquer nome de utilizador e uma palavra-passe de 4+ caracteres; aparece um aviso amarelo).
 
 ## 4. Publicar no GitHub Pages
 
