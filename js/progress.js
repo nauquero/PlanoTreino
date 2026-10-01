@@ -52,7 +52,7 @@ export function summarize({ logs, gymDays }, key, goal, today) {
     .sort((a, b) => a.name.localeCompare(b.name, 'pt'));
 
   const s = days.size;
-  const verdict = s === 0 ? 'empty' : s >= goal ? 'goal' : s >= Math.ceil(goal * 0.6) ? 'good' : 'few';
+  const verdict = s === 0 ? 'empty' : !goal ? 'few' : s >= goal ? 'goal' : s >= Math.ceil(goal * 0.6) ? 'good' : 'few';
   return { key, goal, sessions: s, minutes, bests, verdict };
 }
 

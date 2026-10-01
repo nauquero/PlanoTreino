@@ -414,6 +414,26 @@ button { font-family:inherit; color:inherit; }
 .hist-list.tall { max-height:340px; }
 .hist-row .moons + .le-actions { margin-left:6px; }
 
+/* ---------- meta mensal ---------- */
+.goal-card.first { background:linear-gradient(135deg,rgba(251,220,196,.85),rgba(245,198,216,.7) 55%,rgba(217,207,240,.7)); }
+.goal-head { display:flex; gap:12px; align-items:flex-start; margin-bottom:14px; }
+.goal-head h2 { margin:0 0 3px; font-size:16.5px; }
+.goal-badge { display:grid; place-items:center; width:42px; height:42px; border-radius:15px; background:rgba(255,255,255,.75); color:var(--pinkDeep); flex-shrink:0; }
+.goal-sub { font-size:12px; color:var(--soft); line-height:1.5; }
+.goal-picker { display:flex; align-items:center; justify-content:center; gap:14px; margin:6px 0 12px; }
+.goal-step { display:grid; place-items:center; width:48px; height:48px; border-radius:16px; border:none; background:rgba(255,255,255,.85); color:var(--pinkDark); cursor:pointer; box-shadow:0 4px 12px rgba(181,121,142,.18); transition:transform .12s var(--ease); }
+.goal-step:active { transform:scale(.88); }
+.goal-field { display:flex; align-items:baseline; gap:6px; }
+.goal-field input { width:78px; font-family:'Poppins',sans-serif; font-weight:700; font-size:34px; text-align:center; padding:2px 0; border:none; border-bottom:3px solid var(--pink); background:transparent; color:var(--ink); border-radius:0; -moz-appearance:textfield; }
+.goal-field input::-webkit-outer-spin-button, .goal-field input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.goal-field input:focus { outline:none; border-color:var(--pinkDark); }
+.goal-field span { font-size:13px; font-weight:500; color:var(--soft); }
+.goal-chips { display:flex; justify-content:center; gap:8px; margin-bottom:6px; }
+.goal-chip-btn { min-width:48px; padding:7px 14px; border-radius:999px; border:1.5px solid rgba(255,255,255,.9); background:rgba(255,255,255,.7); color:var(--pinkDeep); font-weight:600; font-size:13px; cursor:pointer; transition:transform .12s var(--ease), background .2s; }
+.goal-chip-btn:active { transform:scale(.9); background:var(--pink); }
+.link-btn { margin-left:6px; padding:0; border:none; background:none; color:var(--pinkDark); font-weight:600; font-size:11.5px; text-decoration:underline; cursor:pointer; }
+.nav-btn.dot::after { content:''; position:absolute; top:7px; left:calc(50% + 8px); width:9px; height:9px; border-radius:50%; background:#E8749A; border:2px solid var(--white); animation:pop-in .5s var(--ease); }
+
 /* ---------- toast e confetti ---------- */
 .toast { position:fixed; left:50%; bottom:calc(158px + env(safe-area-inset-bottom,0px)); transform:translate(-50%,20px); display:flex; align-items:center; gap:8px; background:var(--ink); color:var(--white); font-size:12.5px; font-weight:500; padding:11px 16px; border-radius:16px; opacity:0; pointer-events:none; transition:opacity .25s, transform .25s var(--ease); max-width:calc(100% - 32px); z-index:200; box-shadow:0 10px 26px rgba(74,59,74,.3); }
 .toast.show { opacity:1; transform:translate(-50%,0); }

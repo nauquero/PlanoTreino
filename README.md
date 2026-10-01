@@ -32,23 +32,16 @@ update public.profiles set failed_attempts = 0, locked_until = null where id = '
 ```
 
 ### Atualizar a base de dados (quando há novidades)
-Quando saírem funcionalidades novas que precisem da base de dados, corre o ficheiro `supabase/atualizar.sql` no SQL Editor (cola tudo e **Run**). É seguro repetir e **não apaga dados nem PINs**. Inclui: apagar/corrigir, desportos, datas seguras, login por número, séries por dia, sono, exercícios personalizados e a limpeza de dias marcados no futuro.
+Quando saírem funcionalidades novas que precisem da base de dados, corre o ficheiro `supabase/atualizar.sql` (ou, se já tinhas corrido uma versão anterior, o pequeno `supabase/atualizar-metas.sql`) no SQL Editor (cola tudo e **Run**). É seguro repetir e **não apaga dados nem PINs**. Inclui: apagar/corrigir, desportos, datas seguras, login por número, séries por dia, sono, exercícios personalizados, meta mensal e a limpeza de dias marcados no futuro.
 
 ### Pessoas e palavras-passe
 O login é por **número de utilizador + palavra-passe**. A splash não mostra nomes. Cada pessoa só vê os seus dados.
 - Os números iniciais são `1` (Mariana) e `2` (Élia). A palavra-passe é o código que já tinham (pode ser mais longo e ter letras).
-- **Adicionar uma pessoa** (SQL Editor; muda o nome, o número e a palavra-passe). `focus` pode ser `hipertrofia`, `definicao` ou `saude`; `cardio` pode ser `escadas` ou `bicicleta`:
+- **Criar uma pessoa nova:** abre `supabase/novo-utilizador.sql`, muda os valores marcados com `<<<` (identificador, nome, número, objetivo e palavra-passe) e corre no SQL Editor do Supabase. Esse ficheiro tem também os comandos para ver quem existe, mudar uma palavra-passe e desbloquear alguém.
+- Cada pessoa começa sem dados: define a meta do mês na aba Progresso e adiciona a primeira medição.
 
-```sql
-insert into public.profiles (id, name, login_number, focus, cardio, pin_hash)
-values ('sofia', 'Sofia', '3', 'saude', 'bicicleta', extensions.crypt('uma-palavra-passe-forte', extensions.gen_salt('bf')));
-```
-- **Mudar a palavra-passe ou o número de alguém:**
-
-```sql
-update public.profiles set pin_hash = extensions.crypt('nova-palavra-passe', extensions.gen_salt('bf')) where login_number = '1';
-update public.profiles set login_number = '10' where login_number = '1';
-```
+### Meta mensal
+No início de cada mês cada pessoa define quantos dias quer treinar (aba **Progresso**; aparece um pontinho na aba enquanto não houver meta). Pode alterá-la durante o mês. Meses passados ficam como estão. A meta aparece no anel do calendário e no resumo.
 
 ### Como é protegido
 - O URL e a chave `anon` **são públicos** (ficam no código do site). Não dão acesso a nada por si só.
@@ -71,7 +64,7 @@ O ícone está em `icons/` (podes trocá-lo mantendo os nomes e tamanhos); o cac
 - **Treino:** Pernas, Glúteos, Costas, Peito, Braços (Bíceps, Tríceps, Ombros), Abs, Cardio e Outros desportos, com aquecimento e alongamento em cada um. Séries por dia (3 por defeito, "+ série" para mais), melhor carga por exercício, corrigir/apagar, botão "+" para criar exercícios próprios.
 - **Descanso:** temporizador flutuante com tempo recomendado por tipo de exercício (150 s / 120 s / 90 s / 60 s).
 - **Medição, Alimentação (água, proteína, alimentos e quantidades) e Sono** (horas e qualidade por dia).
-- **Progresso:** resumo mensal bem-humorado, melhor carga de cada exercício e calendário. Cada registo marca automaticamente o dia; dias futuros nunca contam. Textos em `js/progress.js`.
+- **Progresso:** meta mensal definida por cada pessoa, resumo mensal bem-humorado, melhor carga de cada exercício e calendário. Cada registo marca automaticamente o dia; dias futuros nunca contam. Textos em `js/progress.js`.
 
 ### Som e visual
 - Os botões fazem um "pop" (gerado no próprio browser, sem ficheiros de áudio). O botão do altifalante, no topo, liga e desliga o som e a preferência fica guardada. Em telemóveis com o modo silencioso ligado o iPhone pode não tocar.

@@ -10,7 +10,7 @@ const ERRORS = {
   future_date: 'Essa data ainda não aconteceu. Só podes registar hoje ou dias passados.',
   not_found: 'Esse registo já não existe. Atualiza a página.',
   duplicate: 'Já existe um exercício com esse nome neste grupo.',
-  invalid: 'Esse nome não é válido. Usa entre 2 e 40 letras.'
+  invalid: 'Valor inválido. Confirma e tenta de novo.'
 };
 export const errorMessage = (code) => ERRORS[code] || 'Ocorreu um erro. Tenta de novo.';
 
@@ -49,7 +49,8 @@ const remote = {
   setSleep: (profile, pin, entry) => rpc('set_sleep', { p_profile: profile, p_pin: pin, p_entry: entry }),
   deleteSleep: (profile, pin, day) => rpc('delete_sleep', { p_profile: profile, p_pin: pin, p_day: day }),
   addCustomExercise: (profile, pin, entry) => rpc('add_custom_exercise', { p_profile: profile, p_pin: pin, p_entry: entry }),
-  deleteCustomExercise: (profile, pin, id) => rpc('delete_custom_exercise', { p_profile: profile, p_pin: pin, p_id: id })
+  deleteCustomExercise: (profile, pin, id) => rpc('delete_custom_exercise', { p_profile: profile, p_pin: pin, p_id: id }),
+  setGoal: (profile, pin, month, days) => rpc('set_goal', { p_profile: profile, p_pin: pin, p_month: month, p_days: days })
 };
 
 // ---------- Modo demo (localStorage) ----------
@@ -65,7 +66,8 @@ function todayIso() { const d = new Date(); return `${d.getFullYear()}-${pad2(d.
 function demoLoad(profile) {
   let d = null;
   try { const raw = localStorage.getItem(demoKey(profile)); if (raw) d = JSON.parse(raw); } catch { /* ignora */ }
-  if (!d) d = { measurements: [{ date: '2026-09-29', ...INITIAL }], logs: [], gym_days: [], sleep: [], custom_exercises: [] };
+  if (!d) d = { measurements: [{ date: '2026-09-29', ...INITIAL }], logs: [], gym_days: [], sleep: [], custom_exercises: [], goals: [] };
+  d.goals = d.goals || [];
   d.sleep = d.sleep || [];
   d.custom_exercises = d.custom_exercises || [];
   let next = d.logs.reduce((m, l) => Math.max(m, l.id || 0), 0);
@@ -85,7 +87,7 @@ const demo = {
     const focus = n === '1' ? 'hipertrofia' : n === '2' ? 'definicao' : 'saude';
     return { ok: true, profile: { id: `demo-${n}`, name: `Convidada ${n}`, focus, cardio: n === '1' ? 'escadas' : 'bicicleta' } };
   },
-  async getData(profile) { return { ok: true, version: 3, ...demoLoad(profile) }; },
+  async getData(profile) { return { ok: true, version: 4, ...demoLoad(profile) }; },
   async addMeasurement(profile, pin, entry) {
     noFuture(entry.date);
     const d = demoLoad(profile);
@@ -153,6 +155,19 @@ const demo = {
     if (name.length < 2 || name.length > 40) throw new ApiError('invalid');
     if (d.custom_exercises.some((c) => c.group_key === entry.group_key && c.name.toLowerCase() === name.toLowerCase())) throw new ApiError('duplicate');
     d.custom_exercises.push({ id: d.custom_exercises.reduce((m, c) => Math.max(m, c.id), 0) + 1, group_key: entry.group_key, name, kind: entry.kind, effort: entry.effort, distance_unit: entry.distance_unit || null });
+    demoSave(profile, d);
+    return { ok: true };
+  },
+  async setGoal(profile, pin, month, days) {
+    const now = new Date();
+    const cur = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}`;
+    const nx = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const nxt = `${nx.getFullYear()}-${pad2(nx.getMonth() + 1)}`;
+    const [y, m] = String(month).split('-').map(Number);
+    const dim = new Date(y, m, 0).getDate();
+    if (!/^\d{4}-\d{2}$/.test(month) || month < cur || month > nxt || !Number.isInteger(days) || days < 1 || days > dim) throw new ApiError('invalid');
+    const d = demoLoad(profile);
+    d.goals = d.goals.filter((g) => g.month !== month).concat({ month, days }).sort((a, b) => a.month.localeCompare(b.month));
     demoSave(profile, d);
     return { ok: true };
   },

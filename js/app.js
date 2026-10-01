@@ -1,6 +1,6 @@
 import { api, isDemo, errorMessage } from './api.js';
 import {
-  FOCUS, TONES, METRICS, MEANINGS, EFFORT_LABELS, NUTRITION, GROUPS, TABS, WARMUP_STRETCH, GYM_GOAL_PER_MONTH, REST,
+  FOCUS, TONES, METRICS, MEANINGS, EFFORT_LABELS, NUTRITION, GROUPS, TABS, WARMUP_STRETCH, GOAL_SUGGESTIONS, REST,
   WATER, PROTEIN_G_PER_KG, FOOD_GUIDE, FOOD_LIMIT
 } from './data.js';
 import { icon } from './icons.js';
@@ -23,8 +23,9 @@ const state = {
   editingMeas: null,  // data da medição a corrigir
   confirm: null,      // 'log:<id>' | 'meas:<data>' | 'sleep:<data>' | 'cex:<id>' à espera de confirmação para apagar
   addingExercise: false,
+  editingGoal: false,
   sleepDate: null,
-  data: { measurements: [], logs: [], gymDays: new Set(), sleep: [], custom: [] }
+  data: { measurements: [], logs: [], gymDays: new Set(), sleep: [], custom: [], goals: new Map() }
 };
 
 // exercícios do plano, por nome
@@ -81,7 +82,11 @@ function applyData(out) {
   state.data.gymDays = new Set(out.gym_days);
   state.data.sleep = out.sleep || [];
   state.data.custom = out.custom_exercises || [];
+  state.data.goals = new Map((out.goals || []).map((g) => [g.month, Number(g.days)]));
 }
+
+const goalFor = (key) => state.data.goals.get(key) || null;
+const daysInMonth = (key) => { const [y, m] = key.split('-').map(Number); return new Date(y, m, 0).getDate(); };
 
 async function refreshData() {
   applyData(await api.getData(uid(), state.pin));
@@ -805,7 +810,7 @@ function pickSleepQuality(btn) {
 }
 
 // ---------- Progresso (resumo mensal + calendário) ----------
-const ringOffset = (n) => 100 - Math.min(n / GYM_GOAL_PER_MONTH, 1) * 100;
+const ringOffset = (n, goal) => (goal ? 100 - Math.min(n / goal, 1) * 100 : 100);
 
 // dias de treino do mês = dias marcados ∪ dias com registos (nunca dias futuros)
 function trainedCount(key) {
@@ -841,11 +846,12 @@ function renderProgresso() {
   if (state.selectedDay && !state.selectedDay.startsWith(key)) state.selectedDay = null;
   if (!state.selectedDay && isCurrent) state.selectedDay = t;
 
-  const sum = summarize({ logs: state.data.logs, gymDays: state.data.gymDays }, key, GYM_GOAL_PER_MONTH, t);
+  const goal = goalFor(key);
+  const sum = summarize({ logs: state.data.logs, gymDays: state.data.gymDays }, key, goal, t);
   const story = buildStory(sum, { name: state.user.name, focus: state.user.focus });
   const count = sum.sessions;
 
-  const chips = [`<span class="s-chip">${icon('calendar', 14)}${count}/${GYM_GOAL_PER_MONTH} treinos</span>`];
+  const chips = [`<span class="s-chip">${icon('calendar', 14)}${goal ? `${count}/${goal} treinos` : `${count} ${count === 1 ? 'treino' : 'treinos'}`}</span>`];
   if (sum.minutes > 0) chips.push(`<span class="s-chip">${icon('activity', 14)}${sum.minutes} min de cardio/desporto</span>`);
 
   const bestsHtml = sum.bests.length ? `
@@ -870,7 +876,10 @@ function renderProgresso() {
     cells += `<button class="cal-day${done ? ' done' : ''}${iso === t ? ' today' : ''}${iso === state.selectedDay ? ' sel' : ''}${future ? ' future' : ''}" data-action="select-day" data-date="${iso}" aria-pressed="${done}"${future ? ' disabled aria-label="Ainda não chegou"' : ''}>${d}</button>`;
   }
 
+  const showGoalCard = isCurrent && (!goal || state.editingGoal);
+
   pageEl.innerHTML = `
+    ${showGoalCard ? goalCardHtml(key, goal) : ''}
     <div class="card month-nav">
       <button data-action="cal-prev" aria-label="Mês anterior">${icon('chevron-left', 18)}</button>
       <div class="month-label">${MONTH_NAMES[month]} ${year}</div>
@@ -891,13 +900,13 @@ function renderProgresso() {
         <div class="ring">
           <svg viewBox="0 0 100 100" aria-hidden="true">
             <circle class="ring-bg" cx="50" cy="50" r="42"/>
-            <circle class="ring-fg" id="ring-fg" cx="50" cy="50" r="42" pathLength="100" stroke-dasharray="100" stroke-dashoffset="${ringOffset(count)}"/>
+            <circle class="ring-fg" id="ring-fg" cx="50" cy="50" r="42" pathLength="100" stroke-dasharray="100" stroke-dashoffset="${ringOffset(count, goal)}"/>
           </svg>
           <div class="ring-num" id="ring-num">${count}</div>
         </div>
         <div>
           <div class="cal-count" id="cal-count">${count} ida${count !== 1 ? 's' : ''} ao ginásio este mês</div>
-          <div class="cal-goal">Meta: ${GYM_GOAL_PER_MONTH} idas por mês</div>
+          <div class="cal-goal">${goal ? `Meta: ${goal} dias de treino` : isCurrent ? 'Ainda sem meta este mês' : 'Sem meta definida neste mês'}${goal && isCurrent ? ' <button class="link-btn" data-action="goal-edit">Alterar</button>' : ''}</div>
         </div>
       </div>
       <div class="cal-grid">
@@ -906,6 +915,59 @@ function renderProgresso() {
       </div>
       <div class="day-detail" id="day-detail">${dayDetailHtml(state.selectedDay)}</div>
     </div>`;
+}
+
+function goalCardHtml(key, goal) {
+  const [y, m] = key.split('-').map(Number);
+  const dim = daysInMonth(key);
+  const first = !goal;
+  return `
+    <div class="card goal-card${first ? ' first' : ''}" id="goal-card">
+      <div class="goal-head"><span class="goal-badge">${icon('target', 20)}</span>
+        <div><h2>${first ? `Define a tua meta de ${MONTH_NAMES[m - 1].toLowerCase()}` : `Meta de ${MONTH_NAMES[m - 1].toLowerCase()}`}</h2>
+        <p class="goal-sub">${first ? 'Novo mês, nova meta! Quantos dias queres treinar?' : 'Podes ajustar a meta quando quiseres durante o mês.'}</p></div></div>
+      <div class="goal-picker">
+        <button type="button" class="goal-step" data-action="goal-minus" aria-label="Menos um dia">${icon('minus', 20)}</button>
+        <div class="goal-field"><input id="goal-days" type="number" inputmode="numeric" min="1" max="${dim}" value="${goal || 12}" aria-label="Dias de treino este mês"><span>dias</span></div>
+        <button type="button" class="goal-step" data-action="goal-plus" aria-label="Mais um dia">${icon('plus', 20)}</button>
+      </div>
+      <div class="goal-chips">${GOAL_SUGGESTIONS.filter((n) => n <= dim).map((n) => `<button type="button" class="goal-chip-btn" data-action="goal-pick" data-n="${n}">${n}</button>`).join('')}</div>
+      <p class="footnote">Dica: 3 treinos por semana são cerca de 12 dias por mês.</p>
+      <div class="log-btns">
+        <button class="save-btn" data-action="goal-save">${first ? 'Definir meta' : 'Atualizar meta'}</button>
+        ${!first ? '<button class="log-cancel" data-action="goal-cancel">Cancelar</button>' : ''}
+      </div>
+      <div class="saved-flash" id="goal-flash"></div>
+    </div>`;
+}
+
+async function saveGoal(btn) {
+  const key = monthKeyOf(new Date());
+  const raw = $('goal-days').value;
+  const days = Number(raw);
+  const flash = $('goal-flash');
+  if (raw === '' || !Number.isInteger(days) || days < 1 || days > daysInMonth(key)) { flash.textContent = `Escolhe um número de dias entre 1 e ${daysInMonth(key)}.`; return; }
+  btn.disabled = true;
+  const [cx, cy] = centerOf(btn);
+  try {
+    await api.setGoal(uid(), state.pin, key, days);
+    state.editingGoal = false;
+    await refreshData();
+    render();
+    burst(cx, cy, 40);
+    popSuccess();
+    haptic([12, 40, 12]);
+  } catch (e) {
+    btn.disabled = false;
+    toast(errorMessage(e.code));
+  }
+}
+
+function stepGoal(delta) {
+  const input = $('goal-days');
+  const max = daysInMonth(monthKeyOf(new Date()));
+  const v = Math.min(max, Math.max(1, (Number(input.value) || 12) + delta));
+  input.value = v;
 }
 
 function selectDay(el) {
@@ -924,9 +986,9 @@ async function toggleDay(iso) {
   const celebrate = (on) => {
     const fg = $('ring-fg');
     if (fg) { // anima o anel do valor antigo para o novo
-      fg.style.strokeDashoffset = ringOffset(before);
+      fg.style.strokeDashoffset = ringOffset(before, goalFor(key));
       void fg.getBoundingClientRect();
-      fg.style.strokeDashoffset = ringOffset(trainedCount(key));
+      fg.style.strokeDashoffset = ringOffset(trainedCount(key), goalFor(key));
       const n = $('ring-num'); n.classList.remove('bump'); void n.offsetWidth; n.classList.add('bump');
     }
     const b = pageEl.querySelector(`.cal-day[data-date="${iso}"]`);
@@ -965,7 +1027,10 @@ function renderNav() {
   }
   const idx = PAGES.findIndex((p) => p[0] === state.page);
   nav.style.setProperty('--i', idx);
-  nav.querySelectorAll('.nav-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
+  nav.querySelectorAll('.nav-btn').forEach((b, i) => {
+    b.classList.toggle('active', i === idx);
+    b.classList.toggle('dot', PAGES[i][0] === 'progresso' && !!state.user && !goalFor(monthKeyOf(new Date())));
+  });
 }
 
 const RENDERERS = { treino: renderTreino, medicao: renderMedicao, alimentacao: renderAlimentacao, sono: renderSono, progresso: renderProgresso };
@@ -1002,6 +1067,12 @@ function onClick(ev) {
     case 'toggle-meanings': state.showMeanings = !state.showMeanings; render(); return;
     case 'cal-prev': state.calMonth = new Date(state.calMonth.getFullYear(), state.calMonth.getMonth() - 1, 1); state.selectedDay = null; break;
     case 'cal-next': state.calMonth = new Date(state.calMonth.getFullYear(), state.calMonth.getMonth() + 1, 1); state.selectedDay = null; break;
+    case 'goal-edit': state.editingGoal = true; render(); scrollToAndFocus('#goal-card'); return;
+    case 'goal-cancel': state.editingGoal = false; render(); return;
+    case 'goal-minus': stepGoal(-1); return;
+    case 'goal-plus': stepGoal(1); return;
+    case 'goal-pick': $('goal-days').value = d.n; return;
+    case 'goal-save': saveGoal(el); return;
     case 'select-day': selectDay(el); return;
     case 'toggle-day': toggleDay(d.date); return;
     case 'save-log': saveLog(el); return;
@@ -1096,14 +1167,14 @@ async function startSession(profile, pin) {
   Object.assign(state, {
     page: 'treino', group: 'pernas', metric: 'weight', openExercise: null, showMeanings: false,
     calMonth: startOfMonth(new Date()), selectedDay: null, editingLog: null, editingMeas: null, confirm: null,
-    addingExercise: false, sleepDate: null
+    addingExercise: false, editingGoal: false, sleepDate: null
   });
   try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ profile, pin })); } catch { /* ignora */ }
 
   $('avatar').className = `avatar ${user.tone}`;
   $('avatar').textContent = user.name[0].toUpperCase();
   $('header-eyebrow').textContent = `Hey, sweetie (aka ${user.name})`;
-  const outdated = !isDemo && out.version !== 3;
+  const outdated = !isDemo && out.version !== 4;
   $('demo-banner').innerHTML = `${icon('alert', 16)}<span>${outdated
     ? 'Há novidades! Falta atualizar a base de dados: corre o ficheiro supabase/atualizar.sql no Supabase.'
     : 'Modo demo: os dados ficam só neste dispositivo. Liga o Supabase (ver README) para os guardar online.'}</span>`;
@@ -1111,6 +1182,7 @@ async function startSession(profile, pin) {
   $('app').hidden = false;
   render(true);
   window.scrollTo(0, 0);
+  if (!outdated && !goalFor(monthKeyOf(new Date()))) setTimeout(() => toast('Novo mês, nova meta! Define-a na aba Progresso.'), 900);
 
   splashEl.classList.add('leaving');
   clearTimeout(leaveTimer);

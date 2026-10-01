@@ -11,8 +11,8 @@ export const FOCUS = {
 // Cores dos avatares (escolhidas pelo nome, para cada pessoa ter a sua)
 export const TONES = ['rose', 'mint', 'lilac', 'peach'];
 
-// Meta mensal de idas ao ginásio (3 por semana). Muda aqui se quiseres outra meta.
-export const GYM_GOAL_PER_MONTH = 12;
+// Sugestões rápidas para a meta mensal de dias de treino (cada pessoa escolhe a sua em cada mês).
+export const GOAL_SUGGESTIONS = [8, 12, 16, 20];
 
 // [chave na BD, nome, unidade]
 export const METRICS = [
