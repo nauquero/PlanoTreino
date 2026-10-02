@@ -555,3 +555,23 @@ button { font-family:inherit; color:inherit; }
 .sleep-calc { display:flex; align-items:center; gap:8px; margin:2px 0 14px; padding:10px 14px; border-radius:14px; background:rgba(217,207,240,.35); font-size:12.5px; color:var(--soft); line-height:1.5; }
 .sleep-calc b { color:var(--pinkDeep); }
 .sl-times { display:block; font-size:10.5px; color:var(--gray); }
+
+/* ---------- donut do progresso ---------- */
+.donut-wrap { display:flex; align-items:center; gap:18px; flex-wrap:wrap; justify-content:center; }
+.donut { position:relative; width:170px; height:170px; flex:0 0 auto; }
+.donut svg { width:100%; height:100%; display:block; }
+.donut-bg { fill:none; stroke:var(--line); stroke-width:15; }
+.donut-seg { fill:none; stroke-width:15; transition:stroke-width .25s var(--ease); animation:donutIn .9s var(--ease) both; animation-delay:calc(var(--i) * .08s); }
+.donut-seg:hover { stroke-width:18; }
+@keyframes donutIn { from { opacity:0; stroke-width:4; } to { opacity:1; } }
+.donut-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; }
+.donut-center b { font-size:28px; font-weight:700; color:var(--pinkDeep); line-height:1; }
+.donut-center span { font-size:11px; color:var(--gray); margin-top:2px; }
+.donut-legend { list-style:none; padding:0; margin:0; flex:1 1 170px; min-width:0; }
+.donut-legend li { display:flex; align-items:center; gap:8px; padding:5px 0; font-size:12.5px; border-bottom:1px solid var(--line); }
+.donut-legend li:last-child { border-bottom:0; }
+.donut-legend .dot { width:11px; height:11px; border-radius:50%; flex:0 0 auto; }
+.donut-legend .dl-name { flex:1; min-width:0; color:var(--ink); }
+.donut-legend b { color:var(--pinkDeep); font-weight:700; }
+.donut-legend em { font-style:normal; font-size:10.5px; color:var(--gray); min-width:64px; text-align:right; }
+@media (prefers-reduced-motion: reduce) { .donut-seg { animation:none; } }

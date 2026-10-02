@@ -1088,6 +1088,44 @@ function trainedCount(key) {
   return s.size;
 }
 
+// ---------- gráfico donut: % dos exercícios do mês por parte do corpo ----------
+const DONUT_COLORS = ['#E8A4BF', '#B79CE0', '#7CCBB0', '#F2B98F', '#8FB8E8', '#D98AA9', '#9C7FC9', '#5FB59A', '#E6C46A', '#B5798E'];
+
+function donutHtml(key) {
+  const t = today();
+  const logs = state.data.logs.filter((l) => l.date.startsWith(key) && l.date <= t);
+  if (!logs.length) {
+    return `<div class="card donut-card"><h2>Treino por parte do corpo</h2><p class="diet-note">Ainda não há exercícios registados neste mês. Quando registares treinos, vês aqui a percentagem de cada parte do corpo.</p></div>`;
+  }
+  const counts = new Map();
+  logs.forEach((l) => { const g = groupOf(l.exercise); counts.set(g, (counts.get(g) || 0) + 1); });
+  const order = groupOrder();
+  const rows = [...counts].sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0])).map(([g, n]) => ({ g, n, raw: (n / logs.length) * 100 }));
+  // arredonda para inteiros somando sempre 100 (maiores restos)
+  rows.forEach((r) => { r.pct = Math.floor(r.raw); });
+  let left = 100 - rows.reduce((a, r) => a + r.pct, 0);
+  [...rows].sort((a, b) => (b.raw - b.pct) - (a.raw - a.pct)).slice(0, left).forEach((r) => { r.pct += 1; });
+  let acc = 0;
+  const arcs = rows.map((r, i) => {
+    const len = r.raw;
+    const seg = `<circle class="donut-seg" style="--i:${i}" cx="50" cy="50" r="38" pathLength="100" stroke="${DONUT_COLORS[i % DONUT_COLORS.length]}" stroke-dasharray="${Math.max(len - 0.8, 0.2)} ${100 - Math.max(len - 0.8, 0.2)}" stroke-dashoffset="${-acc}"><title>${esc(groupLabel(r.g))}: ${r.pct}%</title></circle>`;
+    acc += len;
+    return seg;
+  }).join('');
+  const legend = rows.map((r, i) => `<li><span class="dot" style="background:${DONUT_COLORS[i % DONUT_COLORS.length]}"></span><span class="dl-name">${esc(groupLabel(r.g))}</span><b>${r.pct}%</b><em>${r.n} ${r.n === 1 ? 'exercício' : 'exercícios'}</em></li>`).join('');
+  return `<div class="card donut-card">
+    <h2>Treino por parte do corpo</h2>
+    <div class="donut-wrap">
+      <div class="donut">
+        <svg viewBox="0 0 100 100" role="img" aria-label="Percentagem de exercícios por parte do corpo neste mês"><g transform="rotate(-90 50 50)"><circle class="donut-bg" cx="50" cy="50" r="38"/>${arcs}</g></svg>
+        <div class="donut-center"><b>${logs.length}</b><span>${logs.length === 1 ? 'exercício' : 'exercícios'}</span></div>
+      </div>
+      <ul class="donut-legend">${legend}</ul>
+    </div>
+    <p class="footnote">Cada exercício registado conta uma vez. Os valores seguem os registos que fizeres neste mês.</p>
+  </div>`;
+}
+
 const VERDICT_ICON = { empty: 'sparkles', few: 'leaf', good: 'trend', goal: 'flame' };
 
 // Cargas do dia: uma linha por exercício (com todas as séries juntas), agrupadas por tipo de exercício.
@@ -1180,6 +1218,8 @@ function renderProgresso() {
       <div class="story-chips">${chips.join('')}</div>
       <div class="story-mission">${icon('target', 16)}<span>${esc(story.mission)}</span></div>
     </div>
+
+    ${donutHtml(key)}
 
     <div class="card">
       <div class="cal-summary">
