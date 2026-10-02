@@ -1093,7 +1093,15 @@ const DONUT_COLORS = ['#E8A4BF', '#B79CE0', '#7CCBB0', '#F2B98F', '#8FB8E8', '#D
 
 function donutHtml(key) {
   const t = today();
-  const logs = state.data.logs.filter((l) => l.date.startsWith(key) && l.date <= t);
+  // cada exercício conta uma vez por dia (várias séries ou registos do mesmo exercício no mesmo dia = 1)
+  const seen = new Set();
+  const logs = state.data.logs.filter((l) => {
+    if (!l.date.startsWith(key) || l.date > t) return false;
+    const k = `${l.date}|${l.exercise}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
   if (!logs.length) {
     return `<div class="card donut-card"><h2>Treino por parte do corpo</h2><p class="diet-note">Ainda não há exercícios registados neste mês. Quando registares treinos, vês aqui a percentagem de cada parte do corpo.</p></div>`;
   }
@@ -1118,11 +1126,10 @@ function donutHtml(key) {
     <div class="donut-wrap">
       <div class="donut">
         <svg viewBox="0 0 100 100" role="img" aria-label="Percentagem de exercícios por parte do corpo neste mês"><g transform="rotate(-90 50 50)"><circle class="donut-bg" cx="50" cy="50" r="38"/>${arcs}</g></svg>
-        <div class="donut-center"><b>${logs.length}</b><span>${logs.length === 1 ? 'exercício' : 'exercícios'}</span></div>
       </div>
       <ul class="donut-legend">${legend}</ul>
     </div>
-    <p class="footnote">Cada exercício registado conta uma vez. Os valores seguem os registos que fizeres neste mês.</p>
+    <p class="footnote">Cada exercício conta uma vez por dia, mesmo que o registes mais do que uma vez nesse dia.</p>
   </div>`;
 }
 
