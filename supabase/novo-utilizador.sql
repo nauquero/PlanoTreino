@@ -10,7 +10,7 @@ values (
   'sofia',                       -- <<< 1. identificador interno: uma palavra em minúsculas, sem espaços, que ninguém repita
   'Sofia',                       -- <<< 2. nome que aparece na app ("Hey, sweetie / aka Sofia")
   'sofiasilva',                  -- <<< 3. NOME DE UTILIZADOR (para entrar): único, sem espaços (maiúsculas/minúsculas é igual)
-  'saude',                       -- <<< 4. objetivo: 'hipertrofia', 'definicao' ou 'saude'
+  'saude',                       -- <<< 4. objetivo: 'hipertrofia', 'definicao', 'emagrecimento' (treino em casa, 3x por semana) ou 'saude'
   'bicicleta',                   --        cardio sugerido no fim dos treinos: 'escadas' ou 'bicicleta'
   extensions.crypt('uma-palavra-passe-forte', extensions.gen_salt('bf'))   -- <<< 5. palavra-passe (4+ caracteres; quanto maior, melhor)
 );

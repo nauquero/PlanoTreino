@@ -84,7 +84,7 @@ const demo = {
   async login(number, pin) {
     const n = String(number).trim().toLowerCase();
     if (!n || n.length > 40 || String(pin).length < 4) throw new ApiError('invalid_pin');
-    const focus = n === '1' ? 'hipertrofia' : n === '2' ? 'definicao' : 'saude';
+    const focus = n === '1' ? 'hipertrofia' : n === '2' ? 'definicao' : n === 'gabi' ? 'emagrecimento' : 'saude';
     return { ok: true, profile: { id: `demo-${n}`, name: `Convidada ${n}`, focus, cardio: n === '1' ? 'escadas' : 'bicicleta' } };
   },
   async getData(profile) { return { ok: true, version: 4, ...demoLoad(profile) }; },
@@ -138,7 +138,7 @@ const demo = {
   async setSleep(profile, pin, entry) {
     noFuture(entry.day);
     const d = demoLoad(profile);
-    d.sleep = d.sleep.filter((x) => x.day !== entry.day).concat({ day: entry.day, hours: entry.hours, quality: entry.quality }).sort((a, b) => b.day.localeCompare(a.day));
+    d.sleep = d.sleep.filter((x) => x.day !== entry.day).concat({ day: entry.day, hours: entry.hours, quality: entry.quality, bed_time: entry.bed_time || null, wake_time: entry.wake_time || null }).sort((a, b) => b.day.localeCompare(a.day));
     demoSave(profile, d);
     return { ok: true };
   },

@@ -100,6 +100,7 @@ const ENTRIES = [
 const MISSION = {
   hipertrofia: 'Próxima missão: mais 1–2 repetições ou um pouquinho mais de carga nos exercícios principais, com proteína a acompanhar. Sobrecarga progressiva é o teu superpoder.',
   definicao: 'Próxima missão: subir a carga devagarinho (o músculo é o teu melhor aliado na definição) e manter o cardio regular. Devagar e sempre, mas com pesos.',
+  emagrecimento: 'Próxima missão: fazer as 3 sessões da semana, beber água e dormir bem. Com calma e constância, o resto vem por arrasto.',
   saude: 'Próxima missão: manter a regularidade, mexer o corpo de formas que gostes e dormir bem. O resto vem por arrasto.'
 };
 

@@ -3,7 +3,11 @@ import {
   FOCUS, TONES, METRICS, MEANINGS, EFFORT_LABELS, NUTRITION, GROUPS, TABS, CORE, WARMUP_STRETCH, GOAL_SUGGESTIONS, REST,
   WATER, PROTEIN_G_PER_KG, FOOD_GUIDE, FOOD_LIMIT
 } from './data.js';
+import {
+  HEIGHT_CM, PLAN_START, PLAN_WEEKS, PHASES, phaseOf, SAFETY, SESSIONS, CARDIO, ALL_EXERCISES, GABY_GROUPS, GABY_REST, rxText
+} from './gaby-data.js';
 import { icon } from './icons.js';
+import { doodleSvg } from './doodles.js';
 import { burst, sparkle, trail, haptic, pop, popSuccess, popDone, isMuted, setMuted } from './fx.js';
 import { summarize, buildStory, rowsOfLog, bestSet, bestHold, MONTH_NAMES } from './progress.js';
 import { createTimer } from './timer.js';
@@ -14,6 +18,9 @@ const state = {
   pin: null,
   page: 'treino',
   group: 'pernas',
+  week: 1,            // treino da Gabriela: semana e sessão
+  session: 'dia1',
+  main: null,         // vídeos do treino principal (plano-principal.json)
   metric: 'weight',
   openExercise: null,
   showMeanings: false,
@@ -127,12 +134,18 @@ function suggestionsFor(groupKey) {
 
 // grupo (separador) a que pertence um exercício, para agrupar o detalhe do dia
 function groupOf(name) {
+  if (isGaby() && ALL_EXERCISES.has(name)) return ALL_EXERCISES.get(name).group;
   if (BUILTIN.has(name)) return BUILTIN.get(name).group;
   const c = state.data.custom.find((x) => x.name === name);
   return c && GROUPS[c.group_key] ? c.group_key : 'outros';
 }
 
+const isGaby = () => !!state.user && state.user.focus === 'emagrecimento';
+const groupLabel = (k) => (k === 'outros' ? 'Outros' : (GROUPS[k] || GABY_GROUPS[k]).label);
+const groupOrder = () => [...Object.keys(GROUPS), ...Object.keys(GABY_GROUPS).filter((k) => !(k in GROUPS)), 'outros'];
+
 function exInfo(name) {
+  if (isGaby() && ALL_EXERCISES.has(name)) return ALL_EXERCISES.get(name);
   if (BUILTIN.has(name)) return BUILTIN.get(name);
   const c = state.data.custom.find((x) => x.name === name);
   return c ? { ex: customToEx(c), kind: c.kind } : null;
@@ -155,12 +168,12 @@ function logChips(l) {
 
 function setRowHtml(i, kind, row, hint) {
   const v = (x) => (x !== null && x !== undefined ? ` value="${esc(x)}"` : '');
-  const reps = `<input type="number" inputmode="decimal" min="0" step="any" data-set="reps" placeholder="${kind === 'hold' ? 'Segundos' : (hint?.reps ?? 'Reps')}" aria-label="${kind === 'hold' ? 'Segundos' : 'Repetições'} da série ${i + 1}"${v(row?.reps)}>`;
-  const weight = kind === 'hold' ? '' : `<input type="number" inputmode="decimal" min="0" step="any" data-set="weight" placeholder="${hint?.weight ?? 'Kg'}" aria-label="Peso em kg da série ${i + 1}"${v(row?.weight)}>`;
+  const reps = `<input type="number" inputmode="decimal" min="0" step="any" data-set="reps" placeholder="${kind === 'hold' ? (hint?.reps ?? 'Segundos') : (hint?.reps ?? 'Reps')}" aria-label="${kind === 'hold' ? 'Segundos' : 'Repetições'} da série ${i + 1}"${v(row?.reps)}>`;
+  const weight = kind === 'hold' ? '' : `<input type="number" inputmode="decimal" min="0" step="any" data-set="weight" placeholder="${hint?.weight ?? (kind === 'reps' ? 'Kg (opcional)' : 'Kg')}" aria-label="Peso em kg da série ${i + 1}"${v(row?.weight)}>`;
   return `<div class="set-row"><span class="set-n">Série ${i + 1}</span>${reps}${weight}</div>`;
 }
 
-function logFormHtml(ex, kind, editing, history) {
+function logFormHtml(ex, kind, editing, history, phase = 0) {
   const input = (key, ph, label, value = '') =>
     `<input type="number" inputmode="decimal" min="0" step="any" placeholder="${ph}" aria-label="${label}" data-log="${key}" value="${esc(value)}">`;
   let fields = '';
@@ -173,8 +186,14 @@ function logFormHtml(ex, kind, editing, history) {
     // séries do dia: 3 linhas por defeito (mais as que precisares com "+ série")
     const lastRows = history[0] ? rowsOfLog(history[0]) : [];
     const rows = editing ? rowsOfLog(editing) : [];
-    const count = Math.max(3, rows.length);
-    fields = `<div class="set-rows" data-sets>${Array.from({ length: count }, (_, i) => setRowHtml(i, kind, rows[i], editing ? null : lastRows[i] || lastRows[lastRows.length - 1])).join('')}</div>
+    const rx = ex.rx ? ex.rx[phase] : null; // só o plano da Gabriela tem prescrição
+    const count = Math.max(rx?.sets || 3, rows.length);
+    const target = rx ? (kind === 'hold' ? rx.sec : rx.reps) : null;
+    const hintFor = (i) => {
+      const last = lastRows[i] || lastRows[lastRows.length - 1];
+      return rx ? { reps: target, weight: last?.weight ?? undefined } : last;
+    };
+    fields = `<div class="set-rows" data-sets>${Array.from({ length: count }, (_, i) => setRowHtml(i, kind, rows[i], editing ? null : hintFor(i))).join('')}</div>
       <button type="button" class="add-set" data-action="add-set">${icon('plus', 15)}série</button>`;
   }
   const date = editing?.date || today();
@@ -272,6 +291,7 @@ function addExerciseHtml() {
 }
 
 function renderTreino() {
+  if (isGaby()) { renderTreinoGaby(); return; }
   if (state.group === 'bracos') { pageEl.innerHTML = tabsHtml(); return; } // só a escolha do músculo
   const group = GROUPS[state.group];
   const plan = WARMUP_STRETCH[state.group];
@@ -309,6 +329,7 @@ function renderTreino() {
       </button>
       <div class="ex-body"><div class="ex-clip"><div class="ex-content">
         <div class="tech-text">${esc(ex.tech)}</div>
+        ${doodleSvg(ex.name)}
         ${ex.mistakes.length ? `<div class="mistakes">
           <div class="m-title">${icon('alert', 15)}Erros comuns</div>
           <ul>${ex.mistakes.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>
@@ -356,6 +377,150 @@ function toggleExercise(head) {
   setTimeout(() => card.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 120);
 }
 
+// ---------- Treino da Gabriela (plano de 12 semanas, em casa) ----------
+const fmtLong = (d) => `${d.getDate()} de ${MONTH_NAMES[d.getMonth()].toLowerCase()}`;
+const planStart = () => { const [y, m, d] = PLAN_START.split('-').map(Number); return new Date(y, m - 1, d); };
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+// a semana 1 também conta os registos feitos antes do início oficial
+const weekRange = (w) => { const s = addDays(planStart(), (w - 1) * 7); return [w === 1 ? '0000-01-01' : isoDate(s), isoDate(addDays(s, 6))]; };
+
+// semana atual do plano (antes do início = 1; depois do fim = última)
+function currentWeek() {
+  const n = new Date();
+  const diff = Math.floor((new Date(n.getFullYear(), n.getMonth(), n.getDate()) - planStart()) / 86400000);
+  return Math.min(PLAN_WEEKS, Math.max(1, Math.floor(diff / 7) + 1));
+}
+
+// a sessão da semana está feita se houver algum registo dos seus exercícios nessa semana
+function sessionDone(week, key) {
+  const [a, b] = weekRange(week);
+  const names = new Set([SESSIONS[key].main, ...SESSIONS[key].exercises, ...SESSIONS[key].optional].map((e) => e.name));
+  return state.data.logs.some((l) => l.date >= a && l.date <= b && names.has(l.exercise));
+}
+
+function pickDefaultSession(week) {
+  return Object.keys(SESSIONS).find((k) => !sessionDone(week, k)) || 'dia1';
+}
+
+function weekBarHtml() {
+  const cur = currentWeek();
+  const chips = Array.from({ length: PLAN_WEEKS }, (_, i) => {
+    const w = i + 1;
+    const done = Object.keys(SESSIONS).filter((k) => sessionDone(w, k)).length;
+    return `<button class="week-chip${w === state.week ? ' active' : ''}${w === cur ? ' now' : ''}${done === 3 ? ' full' : ''}" data-action="week" data-week="${w}" aria-label="Semana ${w}${done ? `, ${done} de 3 sessões feitas` : ''}" aria-pressed="${w === state.week}"><b>${w}</b><i>${'<u></u>'.repeat(done)}</i></button>`;
+  }).join('');
+  const ph = PHASES[phaseOf(state.week)];
+  const [a, b] = weekRange(state.week);
+  const [ay, am, ad] = (state.week === 1 ? PLAN_START : a).split('-').map(Number);
+  const [by, bm, bd] = b.split('-').map(Number);
+  const before = isoDate(new Date()) < PLAN_START;
+  return `<div class="card week-card">
+    <div class="week-scroll" id="week-scroll">${chips}</div>
+    <div class="phase-line"><span class="phase-name">${esc(ph.name)}</span><span class="phase-weeks">${esc(ph.weeks)}</span></div>
+    <div class="week-dates">Semana ${state.week}: ${fmtLong(new Date(ay, am - 1, ad))} a ${fmtLong(new Date(by, bm - 1, bd))}</div>
+    <p class="diet-note">${esc(ph.text)}</p>
+    ${before ? `<p class="footnote">O plano começa a ${fmtLong(planStart())}. Podes espreitar a primeira semana já!</p>` : ''}
+  </div>`;
+}
+
+function sessionTabsHtml() {
+  return `<div class="groups session-tabs">${Object.entries(SESSIONS).map(([k, s]) => {
+    const done = sessionDone(state.week, k);
+    return `<button class="group-btn${k === state.session ? ' active' : ''}${done ? ' done' : ''}" data-action="session" data-session="${k}"><span class="st-day">${esc(s.label)}</span><span class="st-title">${esc(s.title)}</span>${done ? `<span class="st-done">${icon('check', 12)}</span>` : ''}</button>`;
+  }).join('')}</div>`;
+}
+
+function mainVideoHtml(key) {
+  const entry = state.main?.[String(state.week)]?.[key];
+  const s = SESSIONS[key];
+  if (entry && entry.titulo) {
+    const link = /^https:\/\//i.test(entry.link || '')
+      ? `<a class="video-link" href="${esc(entry.link)}" target="_blank" rel="noopener noreferrer">${icon('play', 15)}Abrir vídeo</a>` : '';
+    return `<div class="video-box"><b>${esc(entry.titulo)}</b>${entry.minutos ? `<span>${esc(entry.minutos)} min</span>` : ''}${link}</div>`;
+  }
+  return `<div class="video-box empty">${esc(s.mainHint)} Ainda não há vídeo escolhido para esta sessão.</div>`;
+}
+
+function renderTreinoGaby() {
+  const sess = SESSIONS[state.session];
+  const phase = phaseOf(state.week);
+
+  const exCard = (ex, extraClass = '') => {
+    const kind = ex.kind;
+    const open = state.openExercise === ex.name;
+    const all = state.data.logs.filter((l) => l.exercise === ex.name);
+    const history = all.slice(0, 8);
+    const editing = state.editingLog !== null ? history.find((l) => l.id === state.editingLog) : null;
+    const restInfo = kind !== 'time' ? GABY_REST[ex.effort] : null;
+    const best = kind === 'strength' || kind === 'reps' ? bestSet(all) : kind === 'hold' ? bestHold(all) : null;
+    const bestHtml = best
+      ? `<div class="best-line">${icon('star', 15)}<span>Melhor registo: <b>${kind === 'hold' ? `${best.seconds} s` : `${ptNum(best.weight, 2)} kg × ${best.reps}`}</b> <em>(${fmtDate(best.date)})</em></span></div>`
+      : '';
+    const restHtml = restInfo ? `
+        <div class="rest-box">
+          <div class="rest-head">${icon('timer', 16)}<span>Descanso recomendado: <b>${restInfo.range}</b></span></div>
+          <button class="rest-start" data-action="rest-start" data-sec="${restInfo.sec}" data-ex="${esc(ex.name)}">${icon('play', 15)}Iniciar ${fmtClock(restInfo.sec)}</button>
+        </div>` : '';
+    const lead = ex.main ? mainVideoHtml(ex.main) : `<div class="tech-text">${esc(ex.tech)}</div>${doodleSvg(ex.name)}`;
+    const mistakes = ex.mistakes.length ? `<div class="mistakes">
+          <div class="m-title">${icon('alert', 15)}Erros comuns</div>
+          <ul>${ex.mistakes.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>
+        </div>` : '';
+    const prog = ex.main ? '' : `<div class="prog-text">${icon('trend', 15)}<span>${esc(ex.prog)}</span></div>`;
+    return `
+    <div class="exercise${open ? ' open' : ''}${extraClass}">
+      <button class="ex-head" data-action="toggle-ex" data-ex="${esc(ex.name)}" aria-expanded="${open}">
+        <span class="ex-title">
+          <span class="ex-name">${esc(ex.name)}</span>
+          <span class="ex-sub"><span class="ex-reps">${esc(rxText(ex, phase))}</span>${ex.main ? '' : `<span class="effort ${ex.effort}">${EFFORT_LABELS[ex.effort]}</span>`}</span>
+        </span>
+        <span class="chev">${icon('chevron-down', 18)}</span>
+      </button>
+      <div class="ex-body"><div class="ex-clip"><div class="ex-content">
+        ${lead}
+        ${prog}
+        ${mistakes}
+        ${bestHtml}
+        ${restHtml}
+        <div class="log-box${editing ? ' is-editing' : ''}" data-kind="${kind}">
+          <div class="log-title">${icon('pencil', 15)}${editing ? 'A corrigir um registo' : 'Registar sessão'}</div>
+          ${logFormHtml(ex, kind, editing, history, phase)}
+          <div class="log-btns">
+            <button class="log-save" data-action="save-log" data-ex="${esc(ex.name)}">${editing ? 'Atualizar' : 'Guardar'}</button>
+            ${editing ? '<button class="log-cancel" data-action="cancel-edit">Cancelar</button>' : ''}
+          </div>
+          <div class="saved-flash" data-flash></div>
+          ${history.length ? `<div class="log-history">${history.map(logRowHtml).join('')}</div>` : ''}
+        </div>
+      </div></div></div>
+    </div>`;
+  };
+
+  const optionalHtml = `<details class="card optional-card"${sess.optional.some((e) => e.name === state.openExercise) ? ' open' : ''}>
+    <summary>${icon('plus', 16)}<span>Exercícios extra (opcionais)</span><em>${sess.optional.length}</em></summary>
+    <p class="diet-note">Para os dias em que te apetecer fazer mais um bocadinho. Não são obrigatórios.</p>
+    ${sess.optional.map((e) => exCard(e)).join('')}
+  </details>`;
+
+  pageEl.innerHTML = `${weekBarHtml()}${sessionTabsHtml()}
+    <div class="session-head"><h2>${esc(sess.label)} · ${esc(sess.title)}</h2></div>
+    ${sessionNote()}
+    ${exCard(sess.main, ' main-ex')}
+    ${planCard(sess.warm, 'warm')}
+    <div class="sec-title">Exercícios da sessão</div>
+    ${sess.exercises.map((e) => exCard(e)).join('')}
+    ${optionalHtml}
+    <div class="sec-title">Cardio (opcional)</div>
+    ${exCard(CARDIO)}
+    ${planCard(sess.stretch, 'stretch')}
+    <details class="card plan safety"><summary>${icon('alert', 16)}<span>Antes de começar</span></summary><ul>${SAFETY.map((i) => `<li>${esc(i)}</li>`).join('')}</ul></details>`;
+}
+
+function sessionNote() {
+  return sessionDone(state.week, state.session)
+    ? `<div class="done-note">${icon('check', 16)}<span>Esta sessão já está feita nesta semana. Bom trabalho!</span></div>` : '';
+}
+
 function readLogForm(box, kind, exName) {
   const raw = (k) => { const el = box.querySelector(`[data-log="${k}"]`); return el ? el.value.trim() : ''; };
   const entry = { exercise: exName, date: raw('date'), sets: null, reps: null, weight: null, minutes: null, distance: null, note: raw('note') || null, sets_json: null };
@@ -380,16 +545,16 @@ function readLogForm(box, kind, exName) {
     const w = wEl ? wEl.value.trim() : '';
     if (r === '' && w === '') continue; // linha vazia: ignora
     if (r === '' || (kind === 'strength' && w === '')) return { error: kind === 'hold' ? `Preenche os segundos da série ${n}.` : `Preenche as repetições e o peso da série ${n} (0 se for só o peso do corpo).` };
-    const reps = Number(r), weight = kind === 'strength' ? Number(w) : null;
+    const reps = Number(r), weight = kind === 'strength' ? Number(w) : kind === 'reps' && w !== '' ? Number(w) : null;
     if (!(reps > 0) || (weight !== null && !(weight >= 0))) return { error: `Valores inválidos na série ${n}.` };
-    rows.push(kind === 'strength' ? { reps, weight } : { reps });
+    rows.push(weight !== null ? { reps, weight } : { reps });
   }
   if (!rows.length) return { error: 'Preenche pelo menos uma série.' };
   const top = rows.reduce((b, r) => ((r.weight ?? 0) > (b.weight ?? 0) || ((r.weight ?? 0) === (b.weight ?? 0) && r.reps > b.reps) ? r : b), rows[0]);
   entry.sets_json = rows;
   entry.sets = rows.length;
   entry.reps = top.reps;
-  entry.weight = kind === 'strength' ? top.weight : null;
+  entry.weight = top.weight ?? null;
   return { entry };
 }
 
@@ -522,6 +687,8 @@ function lastWeight() {
   return null;
 }
 
+const bmiOf = (kg) => Math.round((kg / ((HEIGHT_CM / 100) ** 2)) * 10) / 10;
+
 function renderChart(entries, key) {
   const pts = entries.filter((e) => e[key] !== null && e[key] !== undefined).map((e) => ({ date: e.date, v: Number(e[key]) }));
   if (pts.length < 2) return '<div class="chart-empty">Adiciona mais medições para veres a evolução desta métrica.</div>';
@@ -558,6 +725,7 @@ function buildOpinion(entries) {
   const lines = [];
   if (focus === 'hipertrofia') lines.push(`${intro}, o teu corpo está oficialmente em modo "obra em curso", e nós adoramos obras (de capacete, claro). A missão é ganhar músculo com calma: sobrecarga progressiva e proteína em todas as refeições, porque o músculo não se constrói só com boas intenções.`);
   else if (focus === 'definicao') lines.push(`${intro}, estamos em missão "derreter gordura sem derreter a paciência". Défice ligeiro, proteína alta e pesos com personalidade, que o músculo é o melhor amigo da definição e nunca te deixa ficar mal.`);
+  else if (focus === 'emagrecimento') lines.push(`${intro}, estamos em missão "derreter gordura sem derreter a paciência". Défice ligeiro, treino regular e muita água, que o corpo agradece cada treino.`);
   else lines.push(`${intro}, estás em modo "manutenção premium". Treino a sério, comida a sério e sono a sério, e o resto vem por arrasto (com muito menos drama).`);
   if (last.visceral != null) {
     const v = Number(last.visceral);
@@ -612,7 +780,7 @@ function renderMedicao() {
       </div>
       ${editing ? '<p class="edit-hint">Para mudar a data, apaga esta medição e cria uma nova.</p>' : ''}
       <div class="form-row">
-        ${METRICS.map(([key, label, unit]) => `<div class="field"><label for="m-${key}">${label} (${unit || 'nº'})</label><input type="number" inputmode="decimal" step="any" min="0" id="m-${key}" placeholder="${last ? num(last[key]) : ''}"${val(key)}></div>`).join('')}
+        ${METRICS.map(([key, label, unit]) => `<div class="field"><label for="m-${key}">${label} (${unit || 'nº'})</label><input type="number" inputmode="decimal" step="any" min="0" id="m-${key}" placeholder="${key === 'bmi' && isGaby() ? 'automático' : last ? num(last[key]) : ''}"${val(key)}></div>`).join('')}
       </div>
       <div class="log-btns">
         <button class="save-btn" data-action="save-measurement">${editing ? 'Atualizar medição' : 'Guardar medição'}</button>
@@ -665,6 +833,8 @@ async function saveMeasurement(btn) {
     if (raw !== '') filled++;
     entry[key] = raw !== '' ? Number(raw) : (base[key] ?? null); // campos vazios herdam o valor de referência
   }
+  // Gabriela: BMI automático (altura conhecida) se não for preenchido à mão
+  if (isGaby() && $('m-bmi').value === '' && $('m-weight').value !== '' && Number($('m-weight').value) > 0) entry.bmi = bmiOf(Number($('m-weight').value));
   if (!filled && !Object.keys(base).length) { $('m-flash').textContent = 'Preenche pelo menos uma medição.'; return; }
   const wasEditing = !!state.editingMeas;
   btn.disabled = true;
@@ -697,7 +867,7 @@ function renderAlimentacao() {
 
   let waterHtml;
   if (w) {
-    const ml = Math.round((w * WATER.mlPerKg) / 100) * 100;
+    const ml = isGaby() ? Math.min(3000, Math.round((w * 30) / 100) * 100) : Math.round((w * WATER.mlPerKg) / 100) * 100;
     const withTraining = ml + WATER.trainingExtraMl;
     const L = (v) => ptNum(v / 1000, 1);
     const glasses = (v) => Math.ceil(v / WATER.glassMl);
@@ -709,7 +879,7 @@ function renderAlimentacao() {
         <div><span>Dia sem treino</span><b>${L(ml)} L</b></div>
         <div><span>Dia de treino</span><b>${L(withTraining)} L</b></div>
       </div>
-      <p class="footnote">Calculado a partir do teu último peso (${ptNum(w, 1)} kg × ${WATER.mlPerKg} ml). Inclui água, chás e infusões sem açúcar; a comida também ajuda. Bebe ao longo do dia, não tudo de uma vez.</p>`;
+      <p class="footnote">Calculado a partir do teu último peso (${ptNum(w, 1)} kg × ${isGaby() ? 30 : WATER.mlPerKg} ml). Inclui água, chás e infusões sem açúcar; a comida também ajuda. Bebe ao longo do dia, não tudo de uma vez.</p>`;
   } else {
     waterHtml = `<div class="water-main"><span class="water-num">${WATER.fallback}</span><span class="water-unit">por dia</span></div>
       <p class="diet-note">Regista o teu peso na secção Medição e eu calculo a quantidade certa para ti. Em dias de treino, soma cerca de 0,5 L.</p>`;
@@ -764,6 +934,23 @@ function lastDays(n) {
   return Array.from({ length: n }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (n - 1 - i)); return isoDate(d); });
 }
 
+// horas dormidas a partir da hora de deitar e da hora de acordar (passa a meia-noite se for preciso)
+function sleepHours(bed, wake) {
+  if (!/^\d{2}:\d{2}$/.test(bed || '') || !/^\d{2}:\d{2}$/.test(wake || '')) return null;
+  const mins = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
+  let d = mins(wake) - mins(bed);
+  if (d < 0) d += 1440;
+  return Math.round((d / 60) * 100) / 100;
+}
+const fmtHM = (h) => { const m = Math.round(h * 60); return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min`; };
+
+function sleepCalcText(bed, wake, existing) {
+  const h = sleepHours(bed, wake);
+  if (h === null) return existing && !existing.bed_time ? `Registo antigo: ${fmtHours(existing.hours)}. Preenche as horas para o atualizar.` : 'Diz-me a que horas foste dormir e a que horas acordaste, e eu faço a conta.';
+  if (h <= 0 || h > 16) return 'Confirma as horas: o sono tem de ter entre 0,5 e 16 horas.';
+  return `${icon('moon', 15)}<span>Dormiste <b>${fmtHM(h)}</b> (${fmtHours(h)})</span>`;
+}
+
 function sleepChart() {
   const map = new Map(state.data.sleep.map((s) => [s.day, s]));
   const days = lastDays(14);
@@ -811,7 +998,7 @@ function sleepRowHtml(s) {
       <span class="le-actions"><button class="mini danger" data-action="del-yes" data-kind="sleep" data-id="${s.day}">Sim</button><button class="mini" data-action="del-no">Não</button></span></div>`;
   }
   const moons = Array.from({ length: 5 }, (_, i) => `<span class="moon${i < s.quality ? ' on' : ''}">${icon('moon', 13)}</span>`).join('');
-  return `<div class="hist-row"><span>${fmtDate(s.day)}</span><b>${fmtHours(s.hours)}</b><span class="moons" title="${SLEEP_LABELS[s.quality - 1]}">${moons}</span>
+  return `<div class="hist-row"><span>${fmtDate(s.day)}${s.bed_time ? `<small class="sl-times">${esc(s.bed_time)} → ${esc(s.wake_time)}</small>` : ''}</span><b>${fmtHours(s.hours)}</b><span class="moons" title="${SLEEP_LABELS[s.quality - 1]}">${moons}</span>
     <span class="le-actions">
       <button class="mini-ico" data-action="edit-sleep" data-day="${s.day}" aria-label="Corrigir sono">${icon('pencil', 14)}</button>
       <button class="mini-ico" data-action="del-sleep" data-day="${s.day}" aria-label="Apagar sono">${icon('trash', 14)}</button>
@@ -830,8 +1017,12 @@ function renderSono() {
       <h2>${icon('moon', 18)} ${existing ? 'Corrigir o sono' : 'Como dormiste?'}</h2>
       <div class="form-row">
         <div class="field"><label for="sl-date">Noite que terminou no dia</label><input type="date" id="sl-date" max="${today()}" value="${day}"></div>
-        <div class="field"><label for="sl-hours">Horas dormidas</label><input type="number" inputmode="decimal" id="sl-hours" min="0.5" max="16" step="0.25" placeholder="ex: 7,5" value="${existing ? esc(existing.hours) : ''}"></div>
       </div>
+      <div class="form-row">
+        <div class="field"><label for="sl-bed">Fui dormir às</label><input type="time" id="sl-bed" value="${existing?.bed_time ? esc(existing.bed_time) : ''}"></div>
+        <div class="field"><label for="sl-wake">Acordei às</label><input type="time" id="sl-wake" value="${existing?.wake_time ? esc(existing.wake_time) : ''}"></div>
+      </div>
+      <div class="sleep-calc" id="sl-calc">${sleepCalcText(existing?.bed_time, existing?.wake_time, existing)}</div>
       <div class="sleep-q" id="sl-q" data-q="${q}" role="radiogroup" aria-label="Qualidade do sono">
         ${SLEEP_LABELS.map((lab, i) => `<button type="button" class="moon-btn${i < q ? ' on' : ''}" data-action="sleep-q" data-q="${i + 1}" role="radio" aria-checked="${i + 1 === q}" aria-label="${lab}">${icon('moon', 26)}<span>${lab}</span></button>`).join('')}
       </div>
@@ -854,18 +1045,19 @@ function renderSono() {
 
 async function saveSleep(btn) {
   const day = $('sl-date').value;
-  const hours = $('sl-hours').value === '' ? NaN : Number($('sl-hours').value);
+  const bed = $('sl-bed').value, wake = $('sl-wake').value;
+  const hours = sleepHours(bed, wake) ?? NaN;
   const quality = Number($('sl-q').dataset.q);
   const flash = $('sl-flash');
   if (!day) { flash.textContent = 'Escolhe o dia.'; return; }
   if (day > today()) { flash.textContent = errorMessage('future_date'); return; }
-  if (!(hours > 0 && hours <= 16)) { flash.textContent = 'Diz quantas horas dormiste (entre 0,5 e 16).'; return; }
+  if (!(hours > 0 && hours <= 16)) { flash.textContent = 'Diz a que horas foste dormir e a que horas acordaste (o sono tem de ter entre 0,5 e 16 horas).'; return; }
   if (!(quality >= 1 && quality <= 5)) { flash.textContent = 'Escolhe a qualidade do sono.'; return; }
   const wasExisting = state.data.sleep.some((s) => s.day === day);
   btn.disabled = true;
   const [cx, cy] = centerOf(btn);
   try {
-    await api.setSleep(uid(), state.pin, { day, hours, quality });
+    await api.setSleep(uid(), state.pin, { day, hours, quality, bed_time: bed, wake_time: wake });
     await refreshData();
     render();
     flashOk($('sl-flash'), wasExisting ? 'Sono atualizado!' : 'Sono guardado!');
@@ -902,7 +1094,7 @@ const VERDICT_ICON = { empty: 'sparkles', few: 'leaf', good: 'trend', goal: 'fla
 
 // Cargas do dia: uma linha por exercício (com todas as séries juntas), agrupadas por tipo de exercício.
 function dayLoadsHtml(logs) {
-  const order = [...Object.keys(GROUPS), 'outros'];
+  const order = groupOrder();
   const groups = new Map();
   for (const l of logs.slice().sort((a, b) => (a.id ?? 0) - (b.id ?? 0))) {
     const gk = groupOf(l.exercise);
@@ -912,7 +1104,7 @@ function dayLoadsHtml(logs) {
     byEx.get(l.exercise).push(l);
   }
   return order.filter((k) => groups.has(k)).map((k) => `
-    <div class="dd-group"><div class="dd-group-title">${k === 'outros' ? 'Outros' : esc(GROUPS[k].label)}</div>
+    <div class="dd-group"><div class="dd-group-title">${esc(groupLabel(k))}</div>
       ${[...groups.get(k)].map(([name, ls]) => `<div class="dd-log"><span>${esc(name)}</span><span class="dd-val">${ls.map(logChips).join('')}</span></div>`).join('')}
     </div>`).join('');
 }
@@ -953,8 +1145,8 @@ function renderProgresso() {
   const bestsHtml = sum.bests.length ? `
     <div class="card">
       <h2>Melhor carga de cada exercício</h2>
-      ${[...Object.keys(GROUPS), 'outros'].filter((k) => bestGroups.has(k)).map((k) => `
-      <div class="bl-group"><div class="dd-group-title">${k === 'outros' ? 'Outros' : esc(GROUPS[k].label)}</div>
+      ${groupOrder().filter((k) => bestGroups.has(k)).map((k) => `
+      <div class="bl-group"><div class="dd-group-title">${esc(groupLabel(k))}</div>
       <div class="hl-list">${bestGroups.get(k).map((b) => `
         <div class="hl-row" style="--k:${bestIdx++}">
           <span class="hl-ico">${icon('star', 16)}</span>
@@ -1177,6 +1369,12 @@ function onClick(ev) {
     case 'group':
       state.group = d.group; state.openExercise = null; state.editingLog = null; state.confirm = null; state.addingExercise = false;
       break;
+    case 'week':
+      state.week = Number(d.week); state.session = pickDefaultSession(state.week); state.openExercise = null; state.editingLog = null; state.confirm = null;
+      break;
+    case 'session':
+      state.session = d.session; state.openExercise = null; state.editingLog = null; state.confirm = null;
+      break;
     case 'toggle-ex': toggleExercise(el); return;
     case 'metric': state.metric = d.metric; break;
     case 'toggle-meanings': state.showMeanings = !state.showMeanings; render(); return;
@@ -1222,6 +1420,17 @@ pageEl.addEventListener('submit', (e) => {
   if (e.target.id === 'add-ex-form') { e.preventDefault(); saveCustomExercise(e.target); }
 });
 
+pageEl.addEventListener('input', (e) => {
+  if (e.target.id === 'sl-bed' || e.target.id === 'sl-wake') {
+    $('sl-calc').innerHTML = sleepCalcText($('sl-bed').value, $('sl-wake').value, null);
+    return;
+  }
+  if (e.target.id !== 'm-weight' || !isGaby()) return;
+  const bmi = $('m-bmi');
+  const w = Number(e.target.value);
+  if (bmi && bmi.value === '') bmi.placeholder = w > 0 ? String(bmiOf(w)) : 'automático';
+});
+
 pageEl.addEventListener('change', (e) => {
   if (e.target.id === 'sl-date') { state.sleepDate = e.target.value || today(); state.confirm = null; render(); }
   if (e.target.id === 'cx-kind') $('cx-dist-row').hidden = e.target.value !== 'time';
@@ -1231,6 +1440,15 @@ pageEl.addEventListener('change', (e) => {
 const splashEl = $('splash');
 const splashInner = $('splash-inner');
 let leaveTimer = 0;
+
+// Vídeos do treino principal da Gabriela, editáveis em plano-principal.json
+async function loadMain() {
+  try {
+    const res = await fetch('plano-principal.json', { cache: 'no-cache' });
+    if (!res.ok) return null;
+    return (await res.json()).semanas || null;
+  } catch { return null; }
+}
 
 function showLogin() {
   splashEl.classList.add('pin-mode');
@@ -1260,11 +1478,10 @@ function showLogin() {
     err.textContent = 'A verificar…';
     try {
       const out = await api.login(number, pass);
-      if (out.profile.app && out.profile.app !== 'butts') throw Object.assign(new Error('app'), { code: 'wrong_app' });
       try { localStorage.setItem(LAST_NUMBER_KEY, number); } catch { /* ignora */ }
       await startSession(out.profile, pass);
     } catch (ex) {
-      err.textContent = ex.code === 'wrong_app' ? 'Esta conta não é desta app.' : ex.code === 'server'
+      err.textContent = ex.code === 'server'
         ? 'Não foi possível entrar. Se acabaste de atualizar a app, falta correr o ficheiro supabase/atualizar.sql no Supabase.'
         : errorMessage(ex.code);
       form.classList.remove('shake'); void form.offsetWidth; form.classList.add('shake');
@@ -1280,18 +1497,20 @@ async function startSession(profile, pin) {
   const user = { id: profile.id, name: profile.name, focus: profile.focus || 'saude', cardio: profile.cardio || 'bicicleta', tone: toneFor(profile.name) };
   const out = await api.getData(user.id, pin);
   state.user = user;
+  state.main = user.focus === 'emagrecimento' ? await loadMain() : null;
   state.pin = pin;
   applyData(out);
   Object.assign(state, {
-    page: 'treino', group: 'pernas', metric: 'weight', openExercise: null, showMeanings: false,
+    page: 'treino', group: 'pernas', week: currentWeek(), session: pickDefaultSession(currentWeek()), metric: 'weight', openExercise: null, showMeanings: false,
     calMonth: startOfMonth(new Date()), selectedDay: null, editingLog: null, editingMeas: null, confirm: null,
     addingExercise: false, editingGoal: false, sleepDate: null
   });
-  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ profile, pin })); } catch { /* ignora */ }
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify({ profile, pin })); } catch { /* ignora */ }
 
   $('avatar').className = `avatar ${user.tone}`;
   $('avatar').textContent = user.name[0].toUpperCase();
   $('header-aka').textContent = `aka ${user.name}`;
+  $('edition-pill').hidden = !isGaby();
   const outdated = !isDemo && out.version !== 4;
   $('demo-banner').innerHTML = `${icon('alert', 16)}<span>${outdated
     ? 'Há novidades! Falta atualizar a base de dados: corre o ficheiro supabase/atualizar.sql no Supabase.'
@@ -1311,7 +1530,7 @@ function logout() {
   rest.stop();
   state.user = null;
   state.pin = null;
-  try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignora */ }
+  try { localStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(SESSION_KEY); } catch { /* ignora */ }
   clearTimeout(leaveTimer);
   $('app').hidden = true;
   splashEl.classList.remove('leaving');
@@ -1357,7 +1576,7 @@ document.addEventListener('pointerdown', (e) => {
 }, { passive: true });
 
 // ---------- efeitos visuais ----------
-const RIPPLE = '.save-btn, .log-save, .rest-start, .add-ex-btn, .sugg-add, .goal-chip-btn, .group-btn, .arm-btn, .dd-toggle, .metric-btn, .moon-btn, .log-cancel, .add-set';
+const RIPPLE = '.week-chip, .save-btn, .log-save, .rest-start, .add-ex-btn, .sugg-add, .goal-chip-btn, .group-btn, .arm-btn, .dd-toggle, .metric-btn, .moon-btn, .log-cancel, .add-set';
 
 // pontinhos de luz a subir pelo fundo
 (function sparks() {
@@ -1413,9 +1632,12 @@ addEventListener('pointermove', (e) => {
   showLogin();
   // mantém a sessão ao recarregar a página (só enquanto o separador estiver aberto)
   try {
-    const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null');
+    const saved = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
     if (saved && saved.profile && saved.profile.id) await startSession(saved.profile, saved.pin);
-  } catch { logout(); }
+  } catch (e) {
+    // só termina a sessão se a palavra-passe deixou de servir; sem internet mantém-na para a próxima vez
+    if (e && ['invalid_pin', 'not_configured', 'locked'].includes(e.code)) logout();
+  }
 })();
 
 if ('serviceWorker' in navigator) {

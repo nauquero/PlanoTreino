@@ -169,6 +169,8 @@ create table if not exists public.sleep_logs (
   quality int not null check (quality between 1 and 5),
   primary key (profile, day)
 );
+alter table public.sleep_logs add column if not exists bed_time  text check (bed_time  ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$');
+alter table public.sleep_logs add column if not exists wake_time text check (wake_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$');
 
 create table if not exists public.custom_exercises (
   id            bigint generated always as identity primary key,
@@ -252,7 +254,7 @@ begin
       select jsonb_agg(g.day order by g.day)
       from public.gym_days g where g.profile = p_profile), '[]'::jsonb),
     'sleep', coalesce((
-      select jsonb_agg(jsonb_build_object('day', s.day, 'hours', s.hours, 'quality', s.quality) order by s.day desc)
+      select jsonb_agg(jsonb_build_object('day', s.day, 'hours', s.hours, 'quality', s.quality, 'bed_time', s.bed_time, 'wake_time', s.wake_time) order by s.day desc)
       from public.sleep_logs s where s.profile = p_profile), '[]'::jsonb),
     'custom_exercises', coalesce((
       select jsonb_agg(jsonb_build_object('id', c.id, 'group_key', c.group_key, 'name', c.name, 'kind', c.kind,
@@ -406,9 +408,11 @@ declare
 begin
   if r <> 'ok' then return jsonb_build_object('ok', false, 'error', r); end if;
   if d > public.today_pt() then return jsonb_build_object('ok', false, 'error', 'future_date'); end if;
-  insert into public.sleep_logs (profile, day, hours, quality)
-  values (p_profile, d, (p_entry->>'hours')::numeric, (p_entry->>'quality')::int)
-  on conflict (profile, day) do update set hours = excluded.hours, quality = excluded.quality;
+  insert into public.sleep_logs (profile, day, hours, quality, bed_time, wake_time)
+  values (p_profile, d, (p_entry->>'hours')::numeric, (p_entry->>'quality')::int,
+          nullif(p_entry->>'bed_time', ''), nullif(p_entry->>'wake_time', ''))
+  on conflict (profile, day) do update set hours = excluded.hours, quality = excluded.quality,
+    bed_time = excluded.bed_time, wake_time = excluded.wake_time;
   return jsonb_build_object('ok', true);
 end;
 $$;

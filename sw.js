@@ -2,11 +2,11 @@
 // Ficheiros da app: rede primeiro (vês sempre a versão mais recente) e cache
 // só quando estás offline. Tipos de letra: cache primeiro.
 // Os dados (Supabase) nunca passam por aqui: vêm sempre da rede.
-const CACHE = 'plano-treino-v6';
+const CACHE = 'plano-treino-v8';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest',
   'css/style.css',
-  'js/app.js', 'js/api.js', 'js/config.js', 'js/data.js', 'js/icons.js', 'js/fx.js', 'js/progress.js', 'js/timer.js',
+  'js/app.js', 'js/api.js', 'js/config.js', 'js/data.js', 'js/icons.js', 'js/fx.js', 'js/progress.js', 'js/timer.js', 'js/gaby-data.js', 'js/doodles.js',
   'fonts/poppins-400.woff2', 'fonts/poppins-500-italic.woff2', 'fonts/poppins-500.woff2', 'fonts/poppins-600.woff2', 'fonts/poppins-700.woff2',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'
 ];

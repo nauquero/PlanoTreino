@@ -1,0 +1,209 @@
+{
+ "_ajuda": "Aqui escolhes o treino principal de cada sessão (Pamela Reif ou Lilly Sabri). Em cada semana e dia preenche: titulo (nome do vídeo), link (começa por https://) e minutos. Se deixares o titulo vazio, a app mostra que ainda não há vídeo escolhido. Depois de editar, guarda (commit) e o site atualiza sozinho.",
+ "semanas": {
+  "1": {
+   "dia1": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia2": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia3": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   }
+  },
+  "2": {
+   "dia1": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia2": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia3": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   }
+  },
+  "3": {
+   "dia1": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia2": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia3": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   }
+  },
+  "4": {
+   "dia1": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia2": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia3": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   }
+  },
+  "5": {
+   "dia1": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia2": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia3": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   }
+  },
+  "6": {
+   "dia1": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia2": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia3": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   }
+  },
+  "7": {
+   "dia1": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia2": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia3": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   }
+  },
+  "8": {
+   "dia1": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia2": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia3": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   }
+  },
+  "9": {
+   "dia1": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia2": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia3": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   }
+  },
+  "10": {
+   "dia1": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia2": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia3": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   }
+  },
+  "11": {
+   "dia1": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia2": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia3": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   }
+  },
+  "12": {
+   "dia1": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia2": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   },
+   "dia3": {
+    "titulo": "",
+    "link": "",
+    "minutos": ""
+   }
+  }
+ }
+}

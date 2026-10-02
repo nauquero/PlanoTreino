@@ -5,6 +5,7 @@
 export const FOCUS = {
   hipertrofia: { goal: 'Objetivo: Hipertrofia' },
   definicao: { goal: 'Objetivo: Perda de gordura + Hipertrofia' },
+  emagrecimento: { goal: 'Objetivo: emagrecer com saúde' },
   saude: { goal: 'Objetivo: Saúde e bem-estar' }
 };
 
@@ -70,6 +71,17 @@ export const NUTRITION = {
       'Jantar': ['Mais leve que o almoço: proteína + muitos legumes + carbo reduzido (ex: só legumes ou pouco arroz)']
     }
   },
+  emagrecimento: {
+    note: 'Foco em perda de gordura + hipertrofia — défice calórico ligeiro, proteína alta para preservar músculo, carboidratos mais controlados mas sempre presentes à volta do treino.',
+    meals: {
+      'Pequeno-almoço': ['Iogurte grego (natural, sem açúcar) + fruta + canela', 'Ovos mexidos + legumes salteados', 'Torrada integral + queijo fresco magro'],
+      'Almoço': ['Proteína magra (frango/peixe) + legumes abundantes + porção moderada de arroz/batata-doce', 'Salada completa com proteína + azeite (moderado)'],
+      'Pré-treino (60–90 min antes)': ['Fruta pequena (ex: maçã)', 'Café + torrada fina'],
+      'Pós-treino': ['Iogurte grego + fruta', 'Batido proteico leve (água em vez de leite gordo)'],
+      'Lanche': ['Palitos de legumes + húmus', 'Queijo fresco magro', 'Punhado pequeno de frutos secos'],
+      'Jantar': ['Mais leve que o almoço: proteína + muitos legumes + carbo reduzido (ex: só legumes ou pouco arroz)']
+    }
+  },
   saude: {
     note: 'Foco em saúde e bem-estar — refeições equilibradas, com proteína, hidratos e gorduras boas, muitos legumes e fruta, e alimentos o mais naturais possível.',
     meals: {
@@ -97,6 +109,7 @@ export const FOOD_GUIDE = [
     portion: {
       hipertrofia: '1 palma da mão por refeição (cerca de 120–150 g de carne ou peixe, 3 ovos, ou 200 g de iogurte grego).',
       definicao: '1 palma da mão por refeição (cerca de 120–150 g de carne ou peixe magro, 2–3 ovos, ou 200 g de iogurte grego).',
+      emagrecimento: '1 palma da mão por refeição (cerca de 120–150 g de carne ou peixe magro, 2–3 ovos, ou 200 g de iogurte grego).',
       saude: '1 palma da mão por refeição (cerca de 100–130 g de carne ou peixe, 2 ovos, ou 150 g de iogurte).'
     }
   },
@@ -106,6 +119,7 @@ export const FOOD_GUIDE = [
     portion: {
       hipertrofia: '1 a 2 punhados por refeição (cerca de 150–250 g de arroz ou massa já cozinhados), mais à volta do treino.',
       definicao: '1 punhado por refeição (cerca de 100–150 g já cozinhados), com um pouco mais antes ou depois do treino. Ao jantar podes reduzir.',
+      emagrecimento: '1 punhado por refeição (cerca de 100–150 g já cozinhados), com um pouco mais antes ou depois do treino. Ao jantar podes reduzir.',
       saude: '1 punhado por refeição (cerca de 120–180 g já cozinhados).'
     }
   },
@@ -115,6 +129,7 @@ export const FOOD_GUIDE = [
     portion: {
       hipertrofia: '1 a 2 polegares por refeição (1 colher de sopa de azeite ou de manteiga de amendoim; um punhado pequeno de frutos secos).',
       definicao: '1 polegar por refeição (1 colher de sopa de azeite; um punhado pequeno de frutos secos). As gorduras têm muitas calorias, mede-as.',
+      emagrecimento: '1 polegar por refeição (1 colher de sopa de azeite; um punhado pequeno de frutos secos). As gorduras têm muitas calorias, mede-as.',
       saude: '1 polegar por refeição (1 colher de sopa de azeite; um punhado pequeno de frutos secos).'
     }
   },
@@ -124,6 +139,7 @@ export const FOOD_GUIDE = [
     portion: {
       hipertrofia: 'À vontade: metade do prato ao almoço e ao jantar (pelo menos 2 punhados cheios).',
       definicao: 'À vontade: metade do prato ao almoço e ao jantar, ou mais. Dão saciedade com poucas calorias.',
+      emagrecimento: 'À vontade: metade do prato ao almoço e ao jantar, ou mais. Dão saciedade com poucas calorias.',
       saude: 'Metade do prato ao almoço e ao jantar.'
     }
   },
@@ -133,6 +149,7 @@ export const FOOD_GUIDE = [
     portion: {
       hipertrofia: '3 a 4 peças por dia, de preferência inteiras (a fruta inteira sacia mais do que o sumo).',
       definicao: '2 a 3 peças por dia, de preferência inteiras e frutos vermelhos quando puderes.',
+      emagrecimento: '2 a 3 peças por dia, de preferência inteiras e frutos vermelhos quando puderes.',
       saude: '2 a 3 peças por dia, de preferência inteiras.'
     }
   }

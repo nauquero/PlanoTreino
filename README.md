@@ -1,6 +1,6 @@
-# No ifs, just butts
+# Just Butts (No ifs, just butts)
 
-App de treino, medição corporal, alimentação e calendário para a Mariana e a Élia.
+App de treino, medição corporal, alimentação, sono e calendário para a Mariana, a Élia e a Gabriela.
 HTML/CSS/JS puro (sem build) + base de dados Supabase, publicada no GitHub Pages.
 
 ```
@@ -39,6 +39,18 @@ O login é por **nome de utilizador + palavra-passe** (o utilizador não disting
 - **Definir o utilizador e a palavra-passe de quem já existe** (para não perder dados): ver o comando `update` em `supabase/novo-utilizador.sql`. Não guardes palavras-passe no GitHub.
 - **Criar uma pessoa nova:** abre `supabase/novo-utilizador.sql`, muda os valores marcados com `<<<` e corre no SQL Editor do Supabase. O ficheiro tem também os comandos para ver quem existe, mudar uma palavra-passe e desbloquear alguém.
 - Cada pessoa começa sem dados: define a meta do mês na aba Progresso e adiciona a primeira medição.
+
+### Sono com horas
+Cada noite regista a hora a que foste dormir e a hora a que acordaste; a app calcula as horas dormidas (também quando passa da meia-noite). Para ativar corre `supabase/atualizar-sono.sql` no SQL Editor (seguro repetir, não apaga dados). Registos antigos continuam a aparecer com as horas que tinham.
+
+### Treino da Gabriela
+Uma pessoa com o objetivo `emagrecimento` (ver `supabase/novo-utilizador.sql`) vê um treino diferente: plano de 12 semanas (5 de outubro a 27 de dezembro) a fazer em casa, 3 sessões por semana. O plano está em `js/gaby-data.js` e os vídeos do treino principal em `plano-principal.json`. Para as restantes pessoas nada muda.
+
+### Desenhos dos exercícios
+Cada exercício mostra um desenho (posição inicial e final). Estão em `js/doodles.js`, por tipo de movimento.
+
+### Sessão
+Depois de entrar, a sessão fica guardada neste dispositivo e só termina quando carregas em sair (ou se a palavra-passe mudar).
 
 ### Meta mensal
 No início de cada mês cada pessoa define quantos dias quer treinar (aba **Progresso**; aparece um pontinho na aba enquanto não houver meta). Pode alterá-la durante o mês. Meses passados ficam como estão. A meta aparece no anel do calendário e no resumo.
