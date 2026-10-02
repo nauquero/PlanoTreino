@@ -46,9 +46,6 @@ Cada noite regista a hora a que foste dormir e a hora a que acordaste; a app cal
 ### Treino da Gabriela
 Uma pessoa com o objetivo `emagrecimento` (ver `supabase/novo-utilizador.sql`) vê um treino diferente: plano de 12 semanas (5 de outubro a 27 de dezembro) a fazer em casa, 3 sessões por semana. O plano está em `js/gaby-data.js` e os vídeos do treino principal em `plano-principal.json`. Para as restantes pessoas nada muda.
 
-### Desenhos dos exercícios
-Cada exercício mostra um desenho (posição inicial e final). Estão em `js/doodles.js`, por tipo de movimento.
-
 ### Sessão
 Depois de entrar, a sessão fica guardada neste dispositivo e só termina quando carregas em sair (ou se a palavra-passe mudar).
 

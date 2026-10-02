@@ -7,7 +7,6 @@ import {
   HEIGHT_CM, PLAN_START, PLAN_WEEKS, PHASES, phaseOf, SAFETY, SESSIONS, CARDIO, ALL_EXERCISES, GABY_GROUPS, GABY_REST, rxText
 } from './gaby-data.js';
 import { icon } from './icons.js';
-import { doodleSvg } from './doodles.js';
 import { burst, sparkle, trail, haptic, pop, popSuccess, popDone, isMuted, setMuted } from './fx.js';
 import { summarize, buildStory, rowsOfLog, bestSet, bestHold, MONTH_NAMES } from './progress.js';
 import { createTimer } from './timer.js';
@@ -329,7 +328,6 @@ function renderTreino() {
       </button>
       <div class="ex-body"><div class="ex-clip"><div class="ex-content">
         <div class="tech-text">${esc(ex.tech)}</div>
-        ${doodleSvg(ex.name)}
         ${ex.mistakes.length ? `<div class="mistakes">
           <div class="m-title">${icon('alert', 15)}Erros comuns</div>
           <ul>${ex.mistakes.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>
@@ -461,7 +459,7 @@ function renderTreinoGaby() {
           <div class="rest-head">${icon('timer', 16)}<span>Descanso recomendado: <b>${restInfo.range}</b></span></div>
           <button class="rest-start" data-action="rest-start" data-sec="${restInfo.sec}" data-ex="${esc(ex.name)}">${icon('play', 15)}Iniciar ${fmtClock(restInfo.sec)}</button>
         </div>` : '';
-    const lead = ex.main ? mainVideoHtml(ex.main) : `<div class="tech-text">${esc(ex.tech)}</div>${doodleSvg(ex.name)}`;
+    const lead = ex.main ? mainVideoHtml(ex.main) : `<div class="tech-text">${esc(ex.tech)}</div>`;
     const mistakes = ex.mistakes.length ? `<div class="mistakes">
           <div class="m-title">${icon('alert', 15)}Erros comuns</div>
           <ul>${ex.mistakes.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>

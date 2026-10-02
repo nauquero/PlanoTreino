@@ -551,18 +551,6 @@ button { font-family:inherit; color:inherit; }
 .optional-card .exercise { margin:10px 0 0; }
 .plan.safety summary { color:#A8704F; }
 
-/* ---------- doodles dos exercícios ---------- */
-.doodle { margin:10px 0 4px; padding:10px 10px 6px; border-radius:16px; background:rgba(255,255,255,.6); border:1px dashed var(--line); }
-.doodle svg { width:100%; max-width:340px; height:auto; display:block; margin:0 auto; overflow:visible; }
-.dd-body { fill:none; stroke:var(--pinkDark); stroke-width:2.6; stroke-linecap:round; stroke-linejoin:round; }
-.dd-head { fill:var(--white); stroke:var(--pinkDark); stroke-width:2.4; }
-.dd-prop { fill:none; stroke:#9C7FC9; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
-.dd-weight { stroke:#7E65B0; stroke-width:4.5; stroke-linecap:round; }
-.dd-band { fill:none; stroke:#58B195; stroke-width:2; stroke-dasharray:3 2.5; stroke-linecap:round; }
-.dd-ground { fill:none; stroke:#D9CFE0; stroke-width:2; stroke-linecap:round; stroke-dasharray:1 5; }
-.dd-arrow { fill:none; stroke:var(--gray); stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
-.doodle-cap { display:flex; justify-content:space-around; max-width:340px; margin:2px auto 0; font-size:10.5px; color:var(--gray); }
-
 /* ---------- sono: horas ---------- */
 .sleep-calc { display:flex; align-items:center; gap:8px; margin:2px 0 14px; padding:10px 14px; border-radius:14px; background:rgba(217,207,240,.35); font-size:12.5px; color:var(--soft); line-height:1.5; }
 .sleep-calc b { color:var(--pinkDeep); }
