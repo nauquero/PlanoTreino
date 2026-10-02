@@ -1219,8 +1219,6 @@ function renderProgresso() {
       <div class="story-mission">${icon('target', 16)}<span>${esc(story.mission)}</span></div>
     </div>
 
-    ${donutHtml(key)}
-
     <div class="card">
       <div class="cal-summary">
         <div class="ring">
@@ -1241,6 +1239,8 @@ function renderProgresso() {
       </div>
       <div class="day-detail" id="day-detail">${dayDetailHtml(state.selectedDay)}</div>
     </div>
+
+    ${donutHtml(key)}
 
     ${bestsHtml}`;
 }

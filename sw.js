@@ -2,7 +2,7 @@
 // Ficheiros da app: rede primeiro (vês sempre a versão mais recente) e cache
 // só quando estás offline. Tipos de letra: cache primeiro.
 // Os dados (Supabase) nunca passam por aqui: vêm sempre da rede.
-const CACHE = 'plano-treino-v10';
+const CACHE = 'plano-treino-v11';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest',
   'css/style.css',

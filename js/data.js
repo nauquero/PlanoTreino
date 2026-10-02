@@ -236,7 +236,8 @@ export const GROUPS = {
       E('Pulldown com Braços Retos', 'medio', '12–15 reps · 3 séries', 'Braços quase esticados, leva a barra até às coxas apertando os dorsais.', ['Dobrar os cotovelos', 'Balançar o tronco']),
       E('Peso Morto', 'alto', '5–8 reps · 3 séries', 'Barra junto às pernas, costas neutras; empurra o chão e estende a anca no topo.', ['Arredondar as costas', 'Barra afastada do corpo', 'Puxar com a lombar']),
       E('Hiperextensão (lombar)', 'medio', '12–15 reps · 3 séries', 'Corpo em linha reta, sobe até ficar alinhada sem hiperextender.', ['Hiperextender a lombar', 'Usar balanço']),
-      E('Encolhimento (Shrug)', 'medio', '10–15 reps · 3 séries', 'Sobe os ombros em direção às orelhas, pausa no topo, sem rodar.', ['Rodar os ombros', 'Carga demasiado pesada com amplitude curta'])
+      E('Encolhimento (Shrug)', 'medio', '10–15 reps · 3 séries', 'Sobe os ombros em direção às orelhas, pausa no topo, sem rodar.', ['Rodar os ombros', 'Carga demasiado pesada com amplitude curta']),
+      E('Delt Fly', 'medio', '15 / 10 / 8 / 6 reps', 'Pirâmide crescente de peso.', ['Usar impulso do tronco'])
     ]
   },
   peito: {
@@ -287,7 +288,6 @@ export const GROUPS = {
       E('Lateral Raises', 'medio', '12–15 reps · 3 séries', 'Até à altura do ombro.', ['Usar impulso do corpo']),
       E('Elevação Lateral no Cabo', 'baixo', '12–15 reps · 3 séries', 'Tensão constante, sobe até à altura do ombro.', ['Encolher os ombros', 'Usar impulso']),
       E('Elevação Frontal', 'baixo', '12–15 reps · 3 séries', 'Sobe até à altura dos olhos, sem balançar.', ['Balançar o tronco', 'Subir demasiado alto']),
-      E('Delt Fly', 'medio', '15 / 10 / 8 / 6 reps', 'Pirâmide crescente de peso.', ['Usar impulso do tronco']),
       E('Face Pull', 'baixo', '12–15 reps · 3 séries', 'Puxa a corda em direção ao rosto com os cotovelos altos.', ['Cotovelos baixos', 'Inclinar o tronco para trás']),
       E('Remada Alta', 'medio', '10–12 reps · 3 séries', 'Puxa até ao peito com os cotovelos acima das mãos, sem passar da altura dos ombros.', ['Subir demasiado a barra', 'Usar impulso'])
     ]
