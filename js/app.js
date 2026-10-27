@@ -957,6 +957,25 @@ function pregnancyPreview(lmp) {
   return `<b>${p.weeks} semanas${p.extraDays ? ` e ${p.extraDays} dia${p.extraDays > 1 ? 's' : ''}` : ''}</b> · ${p.tri.label}<br>Data prevista do parto: <b>${fmtDate(p.due)}</b>`;
 }
 
+const OBJECTIVES = {
+  hipertrofia: ['Hipertrofia (ganhar massa muscular)', 'O foco é aumentar o músculo, em especial glúteos e pernas.', 'Treino de força com progressão de cargas, séries pesadas e descanso entre elas.', 'Proteína em todas as refeições e calorias suficientes para recuperar e crescer.'],
+  definicao: ['Perda de gordura + hipertrofia', 'O foco é perder gordura mantendo (ou ganhando) músculo.', 'Treino de força com cardio a seguir, para gastar mais energia sem perder massa muscular.', 'Ligeiro défice calórico, proteína alta e boa hidratação.'],
+  emagrecimento: ['Emagrecer com saúde', 'O foco é perder peso de forma gradual e sustentável, com treino em casa.', 'Treino em casa, três vezes por semana, com um plano progressivo semana a semana.', 'Refeições regulares, proteína e legumes, sem dietas extremas.'],
+  saude: ['Saúde e bem-estar', 'O foco é sentires-te bem, com mais energia e força no dia a dia.', 'Treino equilibrado, com força, mobilidade e cardio leve.', 'Alimentação variada e regular, com bastante água.']
+};
+
+function objectiveCardHtml() {
+  const o = OBJECTIVES[state.user.focus] || OBJECTIVES.saude;
+  return `<div class="card" id="objective-card">
+      <h2>${icon('target', 18)} O meu objetivo</h2>
+      <div class="cy-head"><b>${esc(o[0])}</b></div>
+      <p class="diet-note">${esc(o[1])}</p>
+      <div class="cy-block"><div class="dd-group-title">Treino</div><p>${esc(o[2])}</p></div>
+      <div class="cy-block"><div class="dd-group-title">Alimentação</div><p>${esc(o[3])}</p></div>
+      <p class="footnote">O objetivo define o teu plano de treino e é atribuído no teu utilizador. Se quiseres mudá-lo, diz-me.</p>
+    </div>`;
+}
+
 function renderPerfil() {
   const p = profileOf();
   const c = p.cycle || {};
@@ -979,7 +998,7 @@ function renderPerfil() {
       ${age !== null ? `<p class="diet-note" style="margin-top:-2px">Tens <b>${age} anos</b>.</p>` : ''}
     </div>
 
-    <div class="card" id="cycle-form">
+    ${objectiveCardHtml()}<div class="card" id="cycle-form">
       <h2>${icon('droplet', 18)} Ciclo menstrual</h2>
       <p class="diet-note">Com estes dados, a aba Progresso mostra em que fase do ciclo estás e o que podes esperar em cada dia.</p>
       <div class="form-row">
@@ -1425,9 +1444,9 @@ async function toggleDay(iso) {
 const PAGES = [
   ['treino', 'Treino', 'dumbbell'],
   ['alimentacao', 'Alimentação', 'leaf'],
-  ['perfil', 'Perfil', 'user'],
   ['medicao', 'Medições', 'activity'],
-  ['progresso', 'Progresso', 'trend']
+  ['progresso', 'Progresso', 'trend'],
+  ['perfil', 'Perfil', 'user']
 ];
 
 function renderNav() {
