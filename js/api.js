@@ -46,8 +46,7 @@ const remote = {
   updateLog: (profile, pin, id, entry) => rpc('update_log', { p_profile: profile, p_pin: pin, p_id: id, p_entry: entry }),
   deleteLog: (profile, pin, id) => rpc('delete_log', { p_profile: profile, p_pin: pin, p_id: id }),
   toggleGymDay: (profile, pin, day) => rpc('toggle_gym_day', { p_profile: profile, p_pin: pin, p_day: day }),
-  setSleep: (profile, pin, entry) => rpc('set_sleep', { p_profile: profile, p_pin: pin, p_entry: entry }),
-  deleteSleep: (profile, pin, day) => rpc('delete_sleep', { p_profile: profile, p_pin: pin, p_day: day }),
+  setProfile: (profile, pin, data) => rpc('set_profile', { p_profile: profile, p_pin: pin, p_data: data }),
   addCustomExercise: (profile, pin, entry) => rpc('add_custom_exercise', { p_profile: profile, p_pin: pin, p_entry: entry }),
   deleteCustomExercise: (profile, pin, id) => rpc('delete_custom_exercise', { p_profile: profile, p_pin: pin, p_id: id }),
   setGoal: (profile, pin, month, days) => rpc('set_goal', { p_profile: profile, p_pin: pin, p_month: month, p_days: days })
@@ -66,9 +65,9 @@ function todayIso() { const d = new Date(); return `${d.getFullYear()}-${pad2(d.
 function demoLoad(profile) {
   let d = null;
   try { const raw = localStorage.getItem(demoKey(profile)); if (raw) d = JSON.parse(raw); } catch { /* ignora */ }
-  if (!d) d = { measurements: [{ date: '2026-09-29', ...INITIAL }], logs: [], gym_days: [], sleep: [], custom_exercises: [], goals: [] };
+  if (!d) d = { measurements: [{ date: '2026-09-29', ...INITIAL }], logs: [], gym_days: [], profile: {}, custom_exercises: [], goals: [] };
   d.goals = d.goals || [];
-  d.sleep = d.sleep || [];
+  d.profile = d.profile || {};
   d.custom_exercises = d.custom_exercises || [];
   let next = d.logs.reduce((m, l) => Math.max(m, l.id || 0), 0);
   d.logs.forEach((l) => { if (!l.id) l.id = ++next; });
@@ -87,7 +86,7 @@ const demo = {
     const focus = n === '1' ? 'hipertrofia' : n === '2' ? 'definicao' : n === 'gabi' ? 'emagrecimento' : 'saude';
     return { ok: true, profile: { id: `demo-${n}`, name: `Convidada ${n}`, focus, cardio: n === '1' ? 'escadas' : 'bicicleta' } };
   },
-  async getData(profile) { return { ok: true, version: 4, ...demoLoad(profile) }; },
+  async getData(profile) { return { ok: true, version: 5, ...demoLoad(profile) }; },
   async addMeasurement(profile, pin, entry) {
     noFuture(entry.date);
     const d = demoLoad(profile);
@@ -135,17 +134,9 @@ const demo = {
     demoSave(profile, d);
     return { ok: true, on };
   },
-  async setSleep(profile, pin, entry) {
-    noFuture(entry.day);
+  async setProfile(profile, pin, data) {
     const d = demoLoad(profile);
-    d.sleep = d.sleep.filter((x) => x.day !== entry.day).concat({ day: entry.day, hours: entry.hours, quality: entry.quality, bed_time: entry.bed_time || null, wake_time: entry.wake_time || null }).sort((a, b) => b.day.localeCompare(a.day));
-    demoSave(profile, d);
-    return { ok: true };
-  },
-  async deleteSleep(profile, pin, day) {
-    const d = demoLoad(profile);
-    if (!d.sleep.some((x) => x.day === day)) throw new ApiError('not_found');
-    d.sleep = d.sleep.filter((x) => x.day !== day);
+    d.profile = data;
     demoSave(profile, d);
     return { ok: true };
   },

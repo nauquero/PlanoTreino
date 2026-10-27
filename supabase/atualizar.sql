@@ -93,6 +93,8 @@ end;
 $$;
 
 -- ---------- leitura ----------
+alter table public.profiles add column if not exists profile_data jsonb not null default '{}'::jsonb;
+
 create or replace function public.get_data(p_profile text, p_pin text)
 returns jsonb
 language plpgsql
@@ -104,7 +106,8 @@ begin
   if r <> 'ok' then return jsonb_build_object('ok', false, 'error', r); end if;
   return jsonb_build_object(
     'ok', true,
-    'version', 4,
+    'version', 5,
+    'profile', coalesce((select profile_data from public.profiles where id = p_profile), '{}'::jsonb),
     'measurements', coalesce((
       select jsonb_agg(to_jsonb(m) - 'profile' order by m.date)
       from public.measurements m where m.profile = p_profile), '[]'::jsonb),
@@ -369,6 +372,25 @@ $$;
 -- ---------- permissões ----------
 grant execute on function public.login(text, text)                       to anon;
 grant execute on function public.login_user(text, text)                  to anon;
+-- guardar o perfil
+create or replace function public.set_profile(p_profile text, p_pin text, p_data jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare r text := public.auth_pin(p_profile, p_pin);
+begin
+  if r <> 'ok' then return jsonb_build_object('ok', false, 'error', r); end if;
+  if p_data is null or jsonb_typeof(p_data) <> 'object' or length(p_data::text) > 4000 then
+    return jsonb_build_object('ok', false, 'error', 'invalid');
+  end if;
+  update public.profiles set profile_data = p_data where id = p_profile;
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+
 grant execute on function public.get_data(text, text)                    to anon;
 grant execute on function public.add_measurement(text, text, jsonb)      to anon;
 grant execute on function public.delete_measurement(text, text, date)    to anon;
@@ -381,3 +403,4 @@ grant execute on function public.delete_sleep(text, text, date)          to anon
 grant execute on function public.add_custom_exercise(text, text, jsonb)  to anon;
 grant execute on function public.delete_custom_exercise(text, text, bigint) to anon;
 grant execute on function public.set_goal(text, text, text, int)       to anon;
+grant execute on function public.set_profile(text, text, jsonb) to anon;

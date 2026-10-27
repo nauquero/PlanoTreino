@@ -10,6 +10,7 @@ import { icon } from './icons.js';
 import { burst, sparkle, trail, haptic, pop, popSuccess, popDone, isMuted, setMuted } from './fx.js';
 import { summarize, buildStory, rowsOfLog, bestSet, bestHold, MONTH_NAMES } from './progress.js';
 import { createTimer } from './timer.js';
+import { GENDERS, STATUSES, PHASES as CYCLE_PHASES, cycleDayInfo, lateDays, nextPeriod, pregnancyInfo, ageOf, diffDays } from './cycle.js';
 
 // ---------- estado ----------
 const state = {
@@ -27,11 +28,11 @@ const state = {
   selectedDay: null,
   editingLog: null,   // id do registo a corrigir
   editingMeas: null,  // data da medição a corrigir
-  confirm: null,      // 'log:<id>' | 'meas:<data>' | 'sleep:<data>' | 'cex:<id>' à espera de confirmação para apagar
+  confirm: null,      // 'log:<id>' | 'meas:<data>' | 'cex:<id>' à espera de confirmação para apagar
   addingExercise: false,
   editingGoal: false,
-  sleepDate: null,
-  data: { measurements: [], logs: [], gymDays: new Set(), sleep: [], custom: [], goals: new Map() }
+  cycleDay: null,
+  data: { measurements: [], logs: [], gymDays: new Set(), profile: {}, custom: [], goals: new Map() }
 };
 
 // exercícios do plano, por nome
@@ -86,7 +87,7 @@ function applyData(out) {
   state.data.measurements = out.measurements;
   state.data.logs = out.logs;
   state.data.gymDays = new Set(out.gym_days);
-  state.data.sleep = out.sleep || [];
+  state.data.profile = out.profile || {};
   state.data.custom = out.custom_exercises || [];
   state.data.goals = new Map((out.goals || []).map((g) => [g.month, Number(g.days)]));
 }
@@ -635,7 +636,6 @@ async function confirmDelete(kind, id) {
   try {
     if (kind === 'log') await api.deleteLog(uid(), state.pin, Number(id));
     else if (kind === 'meas') await api.deleteMeasurement(uid(), state.pin, id);
-    else if (kind === 'sleep') await api.deleteSleep(uid(), state.pin, id);
     else if (kind === 'cex') await api.deleteCustomExercise(uid(), state.pin, Number(id));
     state.confirm = null;
     if (kind === 'log' && state.editingLog === Number(id)) state.editingLog = null;
@@ -924,141 +924,137 @@ function renderAlimentacao() {
     </div>`;
 }
 
-// ---------- Sono ----------
-const SLEEP_LABELS = ['Péssima', 'Fraca', 'Razoável', 'Boa', 'Ótima'];
-const fmtHours = (h) => `${ptNum(h, 2)} h`;
+// ---------- Perfil ----------
+const profileOf = () => state.data.profile || {};
+const displayName = () => profileOf().first_name || state.user.name;
 
-function lastDays(n) {
-  return Array.from({ length: n }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (n - 1 - i)); return isoDate(d); });
+function paintHeader() {
+  const n = displayName();
+  $('avatar').textContent = n[0].toUpperCase();
+  $('header-aka').textContent = `aka ${n}`;
 }
 
-// horas dormidas a partir da hora de deitar e da hora de acordar (passa a meia-noite se for preciso)
-function sleepHours(bed, wake) {
-  if (!/^\d{2}:\d{2}$/.test(bed || '') || !/^\d{2}:\d{2}$/.test(wake || '')) return null;
-  const mins = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
-  let d = mins(wake) - mins(bed);
-  if (d < 0) d += 1440;
-  return Math.round((d / 60) * 100) / 100;
-}
-const fmtHM = (h) => { const m = Math.round(h * 60); return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min`; };
+function daysIn(y, m) { return new Date(y, m, 0).getDate(); }
 
-function sleepCalcText(bed, wake, existing) {
-  const h = sleepHours(bed, wake);
-  if (h === null) return existing && !existing.bed_time ? `Registo antigo: ${fmtHours(existing.hours)}. Preenche as horas para o atualizar.` : 'Diz-me a que horas foste dormir e a que horas acordaste, e eu faço a conta.';
-  if (h <= 0 || h > 16) return 'Confirma as horas: o sono tem de ter entre 0,5 e 16 horas.';
-  return `${icon('moon', 15)}<span>Dormiste <b>${fmtHM(h)}</b> (${fmtHours(h)})</span>`;
-}
-
-function sleepChart() {
-  const map = new Map(state.data.sleep.map((s) => [s.day, s]));
-  const days = lastDays(14);
-  const w = 500, h = 180, padX = 18, padTop = 14, padBottom = 30, max = 12;
-  const H = h - padTop - padBottom, slot = (w - padX * 2) / days.length;
-  const y = (hrs) => h - padBottom - (hrs / max) * H;
-  const bars = days.map((d, i) => {
-    const s = map.get(d);
-    const x = padX + i * slot + 3;
-    const label = i % 2 === 1 || i === days.length - 1 ? `<text class="chart-axis" x="${x + (slot - 6) / 2}" y="${h - 8}" text-anchor="middle">${fmtShort(d)}</text>` : '';
-    if (!s) return `<rect class="sbar empty" x="${x}" y="${h - padBottom - 3}" width="${slot - 6}" height="3" rx="1.5"/>${label}`;
-    return `<rect class="sbar q${s.quality}" x="${x}" y="${y(Number(s.hours))}" width="${slot - 6}" height="${(Number(s.hours) / max) * H}" rx="5"><title>${fmtDate(d)}: ${fmtHours(s.hours)} · ${SLEEP_LABELS[s.quality - 1]}</title></rect>${label}`;
-  }).join('');
-  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto" role="img" aria-label="Horas de sono nos últimos 14 dias">
-    <rect x="${padX}" y="${y(9)}" width="${w - padX * 2}" height="${y(7) - y(9)}" rx="6" fill="#C6E8DC" opacity=".55"/>
-    <text class="chart-axis" x="${w - padX}" y="${y(9) - 4}" text-anchor="end">ideal: 7–9 h</text>
-    ${bars}
-  </svg>`;
-}
-
-function sleepSummary() {
-  const set = new Set(lastDays(7));
-  const week = state.data.sleep.filter((s) => set.has(s.day));
-  if (!week.length) return { html: '<p class="diet-note">Regista o teu primeiro sono e começamos a conta.</p>' };
-  const avgH = week.reduce((a, s) => a + Number(s.hours), 0) / week.length;
-  const avgQ = week.reduce((a, s) => a + Number(s.quality), 0) / week.length;
-  const msg = avgH >= 7
-    ? 'Sono em modo premium: o músculo agradece e a recuperação também.'
-    : avgH >= 6
-      ? 'Quase lá! Mais uns 30 minutos de cama e fazes upgrade para o sono premium.'
-      : 'O teu corpo anda a pedir mais cama. Tenta deitar-te mais cedo e vê a diferença no treino.';
-  return {
-    html: `<div class="sleep-stats">
-        <div><span>Média da semana</span><b>${fmtHours(avgH)}</b></div>
-        <div><span>Qualidade média</span><b>${SLEEP_LABELS[Math.min(4, Math.max(0, Math.round(avgQ) - 1))]}</b></div>
-        <div><span>Noites registadas</span><b>${week.length}/7</b></div>
-      </div><p class="diet-note">${msg}</p>`
-  };
-}
-
-function sleepRowHtml(s) {
-  const key = `sleep:${s.day}`;
-  if (state.confirm === key) {
-    return `<div class="hist-row confirm"><span>Apagar o sono de ${fmtDate(s.day)}?</span>
-      <span class="le-actions"><button class="mini danger" data-action="del-yes" data-kind="sleep" data-id="${s.day}">Sim</button><button class="mini" data-action="del-no">Não</button></span></div>`;
-  }
-  const moons = Array.from({ length: 5 }, (_, i) => `<span class="moon${i < s.quality ? ' on' : ''}">${icon('moon', 13)}</span>`).join('');
-  return `<div class="hist-row"><span>${fmtDate(s.day)}${s.bed_time ? `<small class="sl-times">${esc(s.bed_time)} → ${esc(s.wake_time)}</small>` : ''}</span><b>${fmtHours(s.hours)}</b><span class="moons" title="${SLEEP_LABELS[s.quality - 1]}">${moons}</span>
-    <span class="le-actions">
-      <button class="mini-ico" data-action="edit-sleep" data-day="${s.day}" aria-label="Corrigir sono">${icon('pencil', 14)}</button>
-      <button class="mini-ico" data-action="del-sleep" data-day="${s.day}" aria-label="Apagar sono">${icon('trash', 14)}</button>
-    </span></div>`;
-}
-
-function renderSono() {
-  if (!state.sleepDate) state.sleepDate = today();
-  const day = state.sleepDate;
-  const existing = state.data.sleep.find((s) => s.day === day);
-  const q = existing ? existing.quality : 0;
-  const sum = sleepSummary();
-
-  pageEl.innerHTML = `
-    <div class="card" id="sleep-form">
-      <h2>${icon('moon', 18)} ${existing ? 'Corrigir o sono' : 'Como dormiste?'}</h2>
-      <div class="form-row">
-        <div class="field"><label for="sl-date">Noite que terminou no dia</label><input type="date" id="sl-date" max="${today()}" value="${day}"></div>
-      </div>
-      <div class="form-row">
-        <div class="field"><label for="sl-bed">Fui dormir às</label><input type="time" id="sl-bed" value="${existing?.bed_time ? esc(existing.bed_time) : ''}"></div>
-        <div class="field"><label for="sl-wake">Acordei às</label><input type="time" id="sl-wake" value="${existing?.wake_time ? esc(existing.wake_time) : ''}"></div>
-      </div>
-      <div class="sleep-calc" id="sl-calc">${sleepCalcText(existing?.bed_time, existing?.wake_time, existing)}</div>
-      <div class="sleep-q" id="sl-q" data-q="${q}" role="radiogroup" aria-label="Qualidade do sono">
-        ${SLEEP_LABELS.map((lab, i) => `<button type="button" class="moon-btn${i < q ? ' on' : ''}" data-action="sleep-q" data-q="${i + 1}" role="radio" aria-checked="${i + 1 === q}" aria-label="${lab}">${icon('moon', 26)}<span>${lab}</span></button>`).join('')}
-      </div>
-      <button class="save-btn" data-action="save-sleep">${existing ? 'Atualizar sono' : 'Guardar sono'}</button>
-      <div class="saved-flash" id="sl-flash"></div>
-    </div>
-
-    <div class="card">
-      <h2>Esta semana</h2>
-      ${sum.html}
-      <div class="chart-wrap">${sleepChart()}</div>
-      <p class="footnote">Para adultos, o recomendado são 7 a 9 horas por noite. Dormir bem ajuda a recuperar o músculo e a manter a energia nos treinos.</p>
-    </div>
-
-    <div class="card">
-      <h2>Histórico</h2>
-      ${state.data.sleep.length ? `<div class="hist-list tall">${state.data.sleep.slice(0, 21).map(sleepRowHtml).join('')}</div>` : '<p class="diet-note">Ainda não registaste nenhuma noite.</p>'}
+function birthSelects(birth) {
+  const [by, bm, bd] = birth ? birth.split('-').map(Number) : [0, 0, 0];
+  const y0 = new Date().getFullYear();
+  const opt = (v, label, cur) => `<option value="${v}"${v === cur ? ' selected' : ''}>${label}</option>`;
+  const days = Array.from({ length: 31 }, (_, i) => opt(i + 1, i + 1, bd)).join('');
+  const months = MONTH_NAMES.map((n, i) => opt(i + 1, n, bm)).join('');
+  const years = Array.from({ length: 91 }, (_, i) => opt(y0 - 10 - i, y0 - 10 - i, by)).join('');
+  return `<div class="form-row">
+      <div class="field"><label for="pf-bd">Dia</label><select id="pf-bd"><option value="">–</option>${days}</select></div>
+      <div class="field" style="flex:2"><label for="pf-bm">Mês</label><select id="pf-bm"><option value="">–</option>${months}</select></div>
+      <div class="field" style="flex:1.3"><label for="pf-by">Ano</label><select id="pf-by"><option value="">–</option>${years}</select></div>
     </div>`;
 }
 
-async function saveSleep(btn) {
-  const day = $('sl-date').value;
-  const bed = $('sl-bed').value, wake = $('sl-wake').value;
-  const hours = sleepHours(bed, wake) ?? NaN;
-  const quality = Number($('sl-q').dataset.q);
-  const flash = $('sl-flash');
-  if (!day) { flash.textContent = 'Escolhe o dia.'; return; }
-  if (day > today()) { flash.textContent = errorMessage('future_date'); return; }
-  if (!(hours > 0 && hours <= 16)) { flash.textContent = 'Diz a que horas foste dormir e a que horas acordaste (o sono tem de ter entre 0,5 e 16 horas).'; return; }
-  if (!(quality >= 1 && quality <= 5)) { flash.textContent = 'Escolhe a qualidade do sono.'; return; }
-  const wasExisting = state.data.sleep.some((s) => s.day === day);
+function pregnancyPreview(lmp) {
+  const p = pregnancyInfo({ status: 'pregnant', last_period: lmp }, today());
+  if (!lmp) return 'Indica o primeiro dia da última menstruação e eu calculo as semanas e a data prevista do parto.';
+  if (!p) return 'Confirma a data: tem de ser de hoje ou de um dia passado, e a gravidez tem no máximo 42 semanas.';
+  return `<b>${p.weeks} semanas${p.extraDays ? ` e ${p.extraDays} dia${p.extraDays > 1 ? 's' : ''}` : ''}</b> · ${p.tri.label}<br>Data prevista do parto: <b>${fmtDate(p.due)}</b>`;
+}
+
+function renderPerfil() {
+  const p = profileOf();
+  const c = p.cycle || {};
+  const status = c.status || 'cycle';
+  const age = ageOf(p.birth, today());
+  const sel = (v, cur) => (v === cur ? ' selected' : '');
+  pageEl.innerHTML = `
+    <div class="card" id="profile-form">
+      <h2>${icon('user', 18)} O meu perfil</h2>
+      <div class="form-row">
+        <div class="field"><label for="pf-first">Nome próprio</label><input type="text" id="pf-first" maxlength="30" autocomplete="given-name" value="${esc(p.first_name || '')}"></div>
+        <div class="field"><label for="pf-last">Apelido</label><input type="text" id="pf-last" maxlength="30" autocomplete="family-name" value="${esc(p.last_name || '')}"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label for="pf-gender">Género</label>
+          <select id="pf-gender"><option value="">Escolher…</option>${GENDERS.map((g) => `<option${sel(g, p.gender)}>${g}</option>`).join('')}</select></div>
+      </div>
+      <div class="field-title">Data de nascimento</div>
+      ${birthSelects(p.birth)}
+      ${age !== null ? `<p class="diet-note" style="margin-top:-2px">Tens <b>${age} anos</b>.</p>` : ''}
+    </div>
+
+    <div class="card" id="cycle-form">
+      <h2>${icon('droplet', 18)} Ciclo menstrual</h2>
+      <p class="diet-note">Com estes dados, a aba Progresso mostra em que fase do ciclo estás e o que podes esperar em cada dia.</p>
+      <div class="form-row">
+        <div class="field"><label for="pf-status">Situação</label>
+          <select id="pf-status">${STATUSES.map(([k, l]) => `<option value="${k}"${sel(k, status)}>${l}</option>`).join('')}</select></div>
+      </div>
+
+      <div id="cy-cycle"${status === 'cycle' ? '' : ' hidden'}>
+        <div class="form-row">
+          <div class="field"><label for="pf-last-period">Primeiro dia da última menstruação</label><input type="date" id="pf-last-period" max="${today()}" value="${esc(status === 'cycle' ? (c.last_period || '') : '')}"></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label for="pf-cycle-len">Duração do ciclo (dias)</label><input type="number" id="pf-cycle-len" inputmode="numeric" min="21" max="45" placeholder="28" value="${c.cycle_len || ''}"></div>
+          <div class="field"><label for="pf-period-len">Dias de menstruação</label><input type="number" id="pf-period-len" inputmode="numeric" min="2" max="8" placeholder="5" value="${c.period_len || ''}"></div>
+        </div>
+        <p class="footnote" style="margin-top:-2px">A duração do ciclo conta-se do primeiro dia de uma menstruação ao dia antes da seguinte. O habitual são 21 a 35 dias (28 em média).</p>
+        <label class="check"><input type="checkbox" id="pf-hormonal"${c.hormonal ? ' checked' : ''}><span>Uso contraceção hormonal (pílula, DIU hormonal, implante…)</span></label>
+        <label class="check"><input type="checkbox" id="pf-irregular"${c.irregular ? ' checked' : ''}><span>O meu ciclo é irregular</span></label>
+      </div>
+
+      <div id="cy-pregnant"${status === 'pregnant' ? '' : ' hidden'}>
+        <div class="form-row">
+          <div class="field"><label for="pf-lmp">Primeiro dia da última menstruação</label><input type="date" id="pf-lmp" max="${today()}" value="${esc(status === 'pregnant' ? (c.last_period || '') : '')}"></div>
+        </div>
+        <div class="info-box" id="pf-preg-calc">${pregnancyPreview(status === 'pregnant' ? c.last_period : '')}</div>
+      </div>
+
+      <div id="cy-none"${status === 'none' ? '' : ' hidden'}>
+        <p class="diet-note">Sem problema, não vamos mostrar fases do ciclo. Se a menstruação desapareceu sem ser por menopausa, gravidez ou contraceção, vale a pena falar com o médico.</p>
+      </div>
+
+      <button class="save-btn" data-action="save-profile">Guardar perfil</button>
+      <div class="saved-flash" id="pf-flash"></div>
+      <p class="footnote">Informação geral, não substitui o acompanhamento médico. Os dados ficam guardados só na tua conta.</p>
+    </div>`;
+}
+
+async function saveProfile(btn) {
+  const flash = $('pf-flash');
+  const val = (id) => $(id).value.trim();
+  const bd = val('pf-bd'), bm = val('pf-bm'), by = val('pf-by');
+  let birth = null;
+  if (bd || bm || by) {
+    if (!(bd && bm && by)) { flash.textContent = 'Completa a data de nascimento (dia, mês e ano) ou deixa tudo em branco.'; return; }
+    if (Number(bd) > daysIn(Number(by), Number(bm))) { flash.textContent = 'Essa data de nascimento não existe. Confirma o dia.'; return; }
+    birth = `${by}-${pad2(bm)}-${pad2(bd)}`;
+  }
+  const status = $('pf-status').value;
+  const cycle = { status };
+  if (status === 'cycle') {
+    const lp = $('pf-last-period').value;
+    const L = val('pf-cycle-len'), P = val('pf-period-len');
+    if (lp && lp > today()) { flash.textContent = 'A última menstruação não pode ser no futuro.'; return; }
+    if (L && !(Number(L) >= 21 && Number(L) <= 45)) { flash.textContent = 'A duração do ciclo tem de ficar entre 21 e 45 dias.'; return; }
+    if (P && !(Number(P) >= 2 && Number(P) <= 8)) { flash.textContent = 'Os dias de menstruação têm de ficar entre 2 e 8.'; return; }
+    if (lp) cycle.last_period = lp;
+    if (L) cycle.cycle_len = Number(L);
+    if (P) cycle.period_len = Number(P);
+    cycle.hormonal = $('pf-hormonal').checked;
+    cycle.irregular = $('pf-irregular').checked;
+  } else if (status === 'pregnant') {
+    const lmp = $('pf-lmp').value;
+    if (lmp && !pregnancyInfo({ status, last_period: lmp }, today())) { flash.textContent = pregnancyPreview(lmp); return; }
+    if (lmp) cycle.last_period = lmp;
+  }
+  const data = { first_name: val('pf-first'), last_name: val('pf-last'), gender: $('pf-gender').value, birth, cycle };
   btn.disabled = true;
   const [cx, cy] = centerOf(btn);
   try {
-    await api.setSleep(uid(), state.pin, { day, hours, quality, bed_time: bed, wake_time: wake });
-    await refreshData();
+    await api.setProfile(uid(), state.pin, data);
+    state.data.profile = data;
+    state.cycleDay = null;
+    paintHeader();
     render();
-    flashOk($('sl-flash'), wasExisting ? 'Sono atualizado!' : 'Sono guardado!');
+    flashOk($('pf-flash'), 'Perfil guardado!');
     burst(cx, cy, 28);
     popSuccess();
   } catch (e) {
@@ -1067,14 +1063,93 @@ async function saveSleep(btn) {
   }
 }
 
-function pickSleepQuality(btn) {
-  const q = Number(btn.dataset.q);
-  const box = $('sl-q');
-  box.dataset.q = q;
-  box.querySelectorAll('.moon-btn').forEach((b, i) => {
-    b.classList.toggle('on', i < q);
-    b.setAttribute('aria-checked', String(i + 1 === q));
-  });
+async function periodStartedToday(btn) {
+  const p = profileOf();
+  const data = { ...p, cycle: { ...(p.cycle || {}), status: 'cycle', last_period: today() } };
+  btn.disabled = true;
+  const [cx, cy] = centerOf(btn);
+  try {
+    await api.setProfile(uid(), state.pin, data);
+    state.data.profile = data;
+    state.cycleDay = null;
+    state.calMonth = startOfMonth(new Date());
+    render();
+    burst(cx, cy, 24);
+    popSuccess();
+  } catch (e) {
+    btn.disabled = false;
+    toast(errorMessage(e.code));
+  }
+}
+
+// Cartão do ciclo na aba Progresso
+function cycleCardHtml(year, month, key) {
+  const c = profileOf().cycle;
+  const t = today();
+  if (!c) {
+    return `<div class="card"><h2>${icon('droplet', 18)} Ciclo menstrual</h2>
+      <p class="diet-note">Queres ver em que fase do ciclo estás e o que esperar em cada dia? Preenche o ciclo no teu perfil.</p>
+      <button class="dd-toggle" data-action="page" data-page="perfil">Abrir o perfil</button></div>`;
+  }
+  if (c.status === 'none') return '';
+  if (c.status === 'pregnant') {
+    const p = pregnancyInfo(c, t);
+    if (!p) return `<div class="card"><h2>${icon('droplet', 18)} Gravidez</h2><p class="diet-note">Indica no perfil o primeiro dia da última menstruação para veres as semanas e o que esperar.</p><button class="dd-toggle" data-action="page" data-page="perfil">Abrir o perfil</button></div>`;
+    return `<div class="card"><h2>${icon('droplet', 18)} Gravidez</h2>
+      <div class="cy-head"><b>${p.weeks} semanas${p.extraDays ? ` e ${p.extraDays} d` : ''}</b><span class="cy-chip" style="--c:#F2A9C4">${p.tri.label}</span></div>
+      <p class="diet-note">Data prevista do parto: <b>${fmtDate(p.due)}</b></p>
+      <div class="cy-block"><div class="dd-group-title">O que podes esperar</div><ul class="cy-list">${p.tri.expect.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
+      <div class="cy-block"><div class="dd-group-title">Treino</div><p>${esc(p.tri.train)}</p></div>
+      <div class="cy-block"><div class="dd-group-title">Alimentação</div><p>${esc(p.tri.eat)}</p></div>
+      <p class="footnote">Antes de treinar durante a gravidez, confirma sempre com o teu médico ou enfermeiro de saúde materna. Pára e procura ajuda se tiveres dor, tonturas, perdas de sangue ou falta de ar.</p></div>`;
+  }
+  if (!c.last_period) {
+    return `<div class="card"><h2>${icon('droplet', 18)} Ciclo menstrual</h2>
+      <p class="diet-note">Falta indicares o primeiro dia da última menstruação.</p>
+      <button class="dd-toggle" data-action="page" data-page="perfil">Abrir o perfil</button></div>`;
+  }
+
+  const sel = state.cycleDay && state.cycleDay.startsWith(key) ? state.cycleDay : (key === monthKeyOf(new Date()) ? t : `${key}-01`);
+  const info = cycleDayInfo(c, sel);
+  const startDow = (new Date(year, month, 1).getDay() + 6) % 7;
+  const dim = daysIn(year, month + 1);
+  let cells = '<div class="cal-day empty"></div>'.repeat(startDow);
+  for (let d = 1; d <= dim; d++) {
+    const iso = `${key}-${pad2(d)}`;
+    const i = cycleDayInfo(c, iso);
+    cells += `<button class="cal-day cy-day${iso === t ? ' today' : ''}${iso === sel ? ' sel' : ''}${i.fertile ? ' fertile' : ''}" style="--c:${i.color}" data-action="cycle-day" data-date="${iso}" aria-label="${d}: ${i.label}, dia ${i.n} do ciclo">${d}</button>`;
+  }
+  const late = key === monthKeyOf(new Date()) ? lateDays(c, t) : 0;
+  const dateLabel = `${Number(sel.slice(8))} de ${MONTH_NAMES[Number(sel.slice(5, 7)) - 1].toLowerCase()}`;
+  const isToday = sel === t;
+  const next = nextPeriod(c, sel);
+  const toNext = diffDays(next, sel);
+  const dots = Array.from({ length: 5 }, (_, i) => `<span class="${i < info.energy ? 'on' : ''}"></span>`).join('');
+  const legend = Object.entries(CYCLE_PHASES).map(([k, ph]) => `<span><i style="background:${ph.color}"></i>${ph.label}</span>`).join('');
+
+  return `<div class="card" id="cycle-card">
+    <h2>${icon('droplet', 18)} Ciclo menstrual</h2>
+    ${late ? `<div class="cy-alert">Já passaram ${late} dia${late > 1 ? 's' : ''} da data prevista. Os ciclos variam, mas se a menstruação já veio, marca abaixo para acertar as previsões.</div>` : ''}
+    <div class="cal-grid cy-grid">${['S','T','Q','Q','S','S','D'].map((x) => `<div class="cal-dow">${x}</div>`).join('')}${cells}</div>
+    <div class="cy-legend">${legend}<span><i class="cy-fert"></i>Janela fértil (estimada)</span></div>
+
+    <div class="cy-detail" style="--c:${info.color}">
+      <div class="cy-head"><b>${dateLabel}${isToday ? ' (hoje)' : ''}</b><span class="cy-chip" style="--c:${info.color}">${info.label}</span></div>
+      <div class="cy-sub">Dia ${info.n} de ${info.L} do ciclo${info.fertile ? ' · janela fértil' : ''}</div>
+      ${info.note ? `<p class="cy-note">${esc(info.note)}</p>` : ''}
+      <div class="cy-energy"><span>Energia típica</span><div class="cy-dots">${dots}</div></div>
+      <p class="diet-note">${esc(info.what)}</p>
+      <div class="cy-block"><div class="dd-group-title">O que podes sentir</div><ul class="cy-list">${info.expect.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>
+      <div class="cy-block"><div class="dd-group-title">Treino</div><p>${esc(info.train)}</p></div>
+      <div class="cy-block"><div class="dd-group-title">Alimentação</div><p>${esc(info.eat)}</p></div>
+      <div class="cy-block"><div class="dd-group-title">Dica</div><p>${esc(info.tip)}</p></div>
+      <p class="cy-next">Próxima menstruação prevista: <b>${fmtDate(next)}</b> (${toNext === 0 ? 'neste dia' : `daqui a ${toNext} dia${toNext > 1 ? 's' : ''}`})</p>
+    </div>
+    ${c.hormonal ? '<p class="footnote">Com contraceção hormonal, a ovulação e as variações hormonais naturais podem não acontecer. Usa as fases apenas como referência.</p>' : ''}
+    ${c.irregular ? '<p class="footnote">Como o teu ciclo é irregular, as datas são só uma estimativa. Marca o início de cada menstruação para acertar as previsões.</p>' : ''}
+    <button class="dd-toggle" data-action="period-today">A menstruação começou hoje</button>
+    <p class="footnote">Previsões baseadas num ciclo médio e informação geral, que pode variar de pessoa para pessoa e de mês para mês. Não substituem o acompanhamento médico, e não servem como método contracetivo.</p>
+  </div>`;
 }
 
 // ---------- Progresso (resumo mensal + calendário) ----------
@@ -1176,7 +1251,7 @@ function renderProgresso() {
 
   const goal = goalFor(key);
   const sum = summarize({ logs: state.data.logs, gymDays: state.data.gymDays }, key, goal, t);
-  const story = buildStory(sum, { name: state.user.name, focus: state.user.focus });
+  const story = buildStory(sum, { name: displayName(), focus: state.user.focus });
   const count = sum.sessions;
 
   const chips = [`<span class="s-chip">${icon('calendar', 14)}${goal ? `${count}/${goal} treinos` : `${count} ${count === 1 ? 'treino' : 'treinos'}`}</span>`];
@@ -1246,6 +1321,8 @@ function renderProgresso() {
       </div>
       <div class="day-detail" id="day-detail">${dayDetailHtml(state.selectedDay)}</div>
     </div>
+
+    ${cycleCardHtml(year, month, key)}
 
     ${donutHtml(key)}
 
@@ -1348,7 +1425,7 @@ async function toggleDay(iso) {
 const PAGES = [
   ['treino', 'Treino', 'dumbbell'],
   ['alimentacao', 'Alimentação', 'leaf'],
-  ['sono', 'Sono', 'moon'],
+  ['perfil', 'Perfil', 'user'],
   ['medicao', 'Medições', 'activity'],
   ['progresso', 'Progresso', 'trend']
 ];
@@ -1368,7 +1445,7 @@ function renderNav() {
   });
 }
 
-const RENDERERS = { treino: renderTreino, medicao: renderMedicao, alimentacao: renderAlimentacao, sono: renderSono, progresso: renderProgresso };
+const RENDERERS = { treino: renderTreino, medicao: renderMedicao, alimentacao: renderAlimentacao, perfil: renderPerfil, progresso: renderProgresso };
 
 function render(fresh = false) {
   renderNav();
@@ -1436,10 +1513,9 @@ function onClick(ev) {
     case 'save-log': saveLog(el); return;
     case 'add-set': addSetRow(el); return;
     case 'save-measurement': saveMeasurement(el); return;
-    case 'save-sleep': saveSleep(el); return;
-    case 'sleep-q': pickSleepQuality(el); return;
-    case 'edit-sleep': state.sleepDate = d.day; state.confirm = null; render(); scrollToAndFocus('#sleep-form'); return;
-    case 'del-sleep': state.confirm = `sleep:${d.day}`; render(); return;
+    case 'save-profile': saveProfile(el); return;
+    case 'period-today': periodStartedToday(el); return;
+    case 'cycle-day': state.cycleDay = d.date; render(); return;
     case 'edit-log':
       state.editingLog = Number(d.id); state.openExercise = d.ex; state.confirm = null;
       render(); scrollToAndFocus('.log-box.is-editing'); return;
@@ -1466,10 +1542,7 @@ pageEl.addEventListener('submit', (e) => {
 });
 
 pageEl.addEventListener('input', (e) => {
-  if (e.target.id === 'sl-bed' || e.target.id === 'sl-wake') {
-    $('sl-calc').innerHTML = sleepCalcText($('sl-bed').value, $('sl-wake').value, null);
-    return;
-  }
+  if (e.target.id === 'pf-lmp') { $('pf-preg-calc').innerHTML = pregnancyPreview(e.target.value); return; }
   if (e.target.id !== 'm-weight' || !isGaby()) return;
   const bmi = $('m-bmi');
   const w = Number(e.target.value);
@@ -1477,7 +1550,9 @@ pageEl.addEventListener('input', (e) => {
 });
 
 pageEl.addEventListener('change', (e) => {
-  if (e.target.id === 'sl-date') { state.sleepDate = e.target.value || today(); state.confirm = null; render(); }
+  if (e.target.id === 'pf-status') {
+    ['cycle', 'pregnant', 'none'].forEach((k) => { $(`cy-${k}`).hidden = k !== e.target.value; });
+  }
   if (e.target.id === 'cx-kind') $('cx-dist-row').hidden = e.target.value !== 'time';
 });
 
@@ -1548,15 +1623,14 @@ async function startSession(profile, pin) {
   Object.assign(state, {
     page: 'treino', group: 'pernas', week: currentWeek(), session: pickDefaultSession(currentWeek()), metric: 'weight', openExercise: null, showMeanings: false,
     calMonth: startOfMonth(new Date()), selectedDay: null, editingLog: null, editingMeas: null, confirm: null,
-    addingExercise: false, editingGoal: false, sleepDate: null
+    addingExercise: false, editingGoal: false, cycleDay: null
   });
   try { localStorage.setItem(SESSION_KEY, JSON.stringify({ profile, pin })); } catch { /* ignora */ }
 
   $('avatar').className = `avatar ${user.tone}`;
-  $('avatar').textContent = user.name[0].toUpperCase();
-  $('header-aka').textContent = `aka ${user.name}`;
+  paintHeader();
   $('edition-pill').hidden = !isGaby();
-  const outdated = !isDemo && out.version !== 4;
+  const outdated = !isDemo && out.version !== 5;
   $('demo-banner').innerHTML = `${icon('alert', 16)}<span>${outdated
     ? 'Há novidades! Falta atualizar a base de dados: corre o ficheiro supabase/atualizar.sql no Supabase.'
     : 'Modo demo: os dados ficam só neste dispositivo. Liga o Supabase (ver README) para os guardar online.'}</span>`;

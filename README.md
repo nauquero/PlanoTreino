@@ -1,6 +1,6 @@
 # Just Butts (No ifs, just butts)
 
-App de treino, medição corporal, alimentação, sono e calendário para a Mariana, a Élia e a Gabriela.
+App de treino, medição corporal, alimentação, perfil (com ciclo menstrual) e calendário para a Mariana, a Élia e a Gabriela.
 HTML/CSS/JS puro (sem build) + base de dados Supabase, publicada no GitHub Pages.
 
 ```
@@ -40,8 +40,8 @@ O login é por **nome de utilizador + palavra-passe** (o utilizador não disting
 - **Criar uma pessoa nova:** abre `supabase/novo-utilizador.sql`, muda os valores marcados com `<<<` e corre no SQL Editor do Supabase. O ficheiro tem também os comandos para ver quem existe, mudar uma palavra-passe e desbloquear alguém.
 - Cada pessoa começa sem dados: define a meta do mês na aba Progresso e adiciona a primeira medição.
 
-### Sono com horas
-Cada noite regista a hora a que foste dormir e a hora a que acordaste; a app calcula as horas dormidas (também quando passa da meia-noite). Para ativar corre `supabase/atualizar-sono.sql` no SQL Editor (seguro repetir, não apaga dados). Registos antigos continuam a aparecer com as horas que tinham.
+### Perfil e ciclo menstrual
+A aba Perfil guarda nome, apelido, género, data de nascimento e os dados do ciclo (última menstruação, duração do ciclo, gravidez, etc.). A aba Progresso mostra a fase do ciclo e o que esperar em cada dia. Para ativar corre `supabase/atualizar-perfil.sql` no SQL Editor (seguro repetir, não apaga dados). A aba do Sono foi retirada da app; os registos antigos continuam guardados na base de dados.
 
 ### Treino da Gabriela
 Uma pessoa com o objetivo `emagrecimento` (ver `supabase/novo-utilizador.sql`) vê um treino diferente: plano de 12 semanas (5 de outubro a 27 de dezembro) a fazer em casa, 3 sessões por semana. O plano está em `js/gaby-data.js` e os vídeos do treino principal em `plano-principal.json`. Para as restantes pessoas nada muda.
@@ -55,7 +55,7 @@ No início de cada mês cada pessoa define quantos dias quer treinar (aba **Prog
 ### Como é protegido
 - O URL e a chave `anon` **são públicos** (ficam no código do site). Não dão acesso a nada por si só.
 - As tabelas têm RLS ligado e sem policies: a chave pública **não consegue** ler nem escrever nelas.
-- Todo o acesso passa por funções (`login_user`, `get_data`, `add_log`, `set_sleep`, …) que exigem a palavra-passe, verificada no servidor.
+- Todo o acesso passa por funções (`login_user`, `get_data`, `add_log`, `set_profile`, …) que exigem a palavra-passe, verificada no servidor.
 - Os PINs só existem na base de dados, com hash (bcrypt). Não estão no código nem no repositório.
 - Limitação: um código de 4 dígitos é proteção leve. Para pessoas novas usa palavras-passe mais longas. O bloqueio após 5 falhas (15 min) dificulta adivinhar.
 
@@ -72,7 +72,7 @@ O ícone está em `icons/` (podes trocá-lo mantendo os nomes e tamanhos); o cac
 ### Funcionalidades
 - **Treino:** Pernas, Glúteos, Costas, Peito, Braços (Bíceps, Tríceps, Ombros), Abs, Cardio e Outros desportos, com aquecimento e alongamento em cada um. Séries por dia (3 por defeito, "+ série" para mais), melhor carga por exercício, corrigir/apagar, botão "+" para criar exercícios próprios.
 - **Descanso:** temporizador flutuante com tempo recomendado por tipo de exercício (150 s / 120 s / 90 s / 60 s).
-- **Medição, Alimentação (água, proteína, alimentos e quantidades) e Sono** (horas e qualidade por dia).
+- **Medição, Alimentação (água, proteína, alimentos e quantidades) e Perfil** (dados pessoais e ciclo menstrual).
 - **Progresso:** meta mensal definida por cada pessoa, resumo mensal bem-humorado, melhor carga de cada exercício e calendário. Cada registo marca automaticamente o dia; dias futuros nunca contam. Textos em `js/progress.js`.
 
 ### Som e visual
