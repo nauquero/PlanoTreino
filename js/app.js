@@ -10,6 +10,7 @@ import { icon } from './icons.js';
 import { burst, sparkle, trail, haptic, pop, popSuccess, popDone, isMuted, setMuted } from './fx.js';
 import { summarize, buildStory, rowsOfLog, bestSet, bestHold, MONTH_NAMES } from './progress.js';
 import { createTimer } from './timer.js';
+import { restBgInit, restBgUpdate, restBgDone, restBgStop } from './rest-bg.js';
 import { GENDERS, STATUSES, PHASES as CYCLE_PHASES, cycleDayInfo, lateDays, nextPeriod, pregnancyInfo, ageOf, diffDays } from './cycle.js';
 
 // ---------- estado ----------
@@ -668,12 +669,16 @@ function paintTimer(s) {
   $('rt-pause').hidden = !!s.done;
   $('rt-add').hidden = !!s.done;
   if (s.done) timerHide = setTimeout(() => { box.hidden = true; box.classList.remove('done'); }, 8000);
+  if (s.running) restBgUpdate(s); else if (!s.done) restBgStop();
 }
-const rest = createTimer(paintTimer, () => {
-  popDone();
+const rest = createTimer(paintTimer, (s) => {
+  restBgDone(s.label);
+  if (document.visibilityState === 'visible') popDone();
   haptic([220, 110, 220, 110, 320]);
   burst(innerWidth / 2, innerHeight - 150, 30);
 });
+
+restBgInit({ onPlay: () => rest.resume(), onPause: () => rest.pause(), onStop: () => rest.stop() });
 
 // ---------- Medição corporal ----------
 function lastMeasurement() { return state.data.measurements[state.data.measurements.length - 1]; }
@@ -715,7 +720,7 @@ function renderChart(entries, key) {
 function buildOpinion(entries) {
   const last = entries[entries.length - 1];
   const first = entries[0];
-  const focus = state.user.focus;
+  const focus = focusOf();
   const bits = [];
   if (last.bmi != null) bits.push(`BMI de ${num(last.bmi)}`);
   if (last.body_fat != null) bits.push(`${num(last.body_fat)}% de gordura corporal`);
@@ -798,7 +803,7 @@ function renderMedicao() {
       <div class="stats-sub">Última medição: ${fmtDate(last.date)}</div>
       <div class="stats-grid">${METRICS.map(([key, label, unit], si) => `<div class="stat" style="--k:${si}"><span>${label}</span><b>${num(last[key])}${last[key] != null ? unit : ''}</b></div>`).join('')}</div>
       <div class="chip-row">
-        <span class="goal-chip">${icon('target', 15)}${esc((FOCUS[state.user.focus] || FOCUS.saude).goal)}</span>
+        <span class="goal-chip">${icon('target', 15)}${esc((FOCUS[focusOf()] || FOCUS.saude).goal)}</span>
         <button class="meaning-toggle" data-action="toggle-meanings">${icon('info', 15)}${state.showMeanings ? 'Fechar significados' : 'O que significa cada medição?'}</button>
       </div>
       ${state.showMeanings ? `<div class="meaning-box">${MEANINGS.map(([k, v]) => `<div class="m-item"><b>${k}:</b> ${v}</div>`).join('')}</div>` : ''}
@@ -859,7 +864,7 @@ function trainedToday() {
 }
 
 function renderAlimentacao() {
-  const focus = FOCUS[state.user.focus] ? state.user.focus : 'saude';
+  const focus = FOCUS[focusOf()] ? focusOf() : 'saude';
   const n = NUTRITION[focus];
   const w = lastWeight();
 
@@ -927,6 +932,9 @@ function renderAlimentacao() {
 // ---------- Perfil ----------
 const profileOf = () => state.data.profile || {};
 const displayName = () => profileOf().first_name || state.user.name;
+// Objetivo escolhido pela pessoa no perfil; se não escolheu, o da conta. Define as sugestões de alimentação e as mensagens.
+// O plano de treino segue sempre a conta (isGaby), por isso mudar de objetivo não muda o treino.
+const focusOf = () => { const o = profileOf().objective; return o && FOCUS[o] ? o : state.user.focus; };
 
 function paintHeader() {
   const n = displayName();
@@ -960,20 +968,41 @@ function pregnancyPreview(lmp) {
 const OBJECTIVES = {
   hipertrofia: ['Hipertrofia (ganhar massa muscular)', 'O foco é aumentar o músculo, em especial glúteos e pernas.', 'Treino de força com progressão de cargas, séries pesadas e descanso entre elas.', 'Proteína em todas as refeições e calorias suficientes para recuperar e crescer.'],
   definicao: ['Perda de gordura + hipertrofia', 'O foco é perder gordura mantendo (ou ganhando) músculo.', 'Treino de força com cardio a seguir, para gastar mais energia sem perder massa muscular.', 'Ligeiro défice calórico, proteína alta e boa hidratação.'],
-  emagrecimento: ['Emagrecer com saúde', 'O foco é perder peso de forma gradual e sustentável, com treino em casa.', 'Treino em casa, três vezes por semana, com um plano progressivo semana a semana.', 'Refeições regulares, proteína e legumes, sem dietas extremas.'],
+  emagrecimento: ['Emagrecer com saúde', 'O foco é perder peso de forma gradual e sustentável.', 'Treino regular, com força e cardio, a um ritmo que consigas manter.', 'Refeições regulares, proteína e legumes, sem dietas extremas.'],
   saude: ['Saúde e bem-estar', 'O foco é sentires-te bem, com mais energia e força no dia a dia.', 'Treino equilibrado, com força, mobilidade e cardio leve.', 'Alimentação variada e regular, com bastante água.']
 };
 
 function objectiveCardHtml() {
-  const o = OBJECTIVES[state.user.focus] || OBJECTIVES.saude;
+  const cur = focusOf();
+  const keys = ['hipertrofia', 'definicao', 'emagrecimento', 'saude'];
+  const o = OBJECTIVES[cur] || OBJECTIVES.saude;
   return `<div class="card" id="objective-card">
       <h2>${icon('target', 18)} O meu objetivo</h2>
-      <div class="cy-head"><b>${esc(o[0])}</b></div>
-      <p class="diet-note">${esc(o[1])}</p>
+      <p class="diet-note">Escolhe o que mais combina contigo. Podes mudar quando quiseres.</p>
+      <div class="obj-list" role="radiogroup" aria-label="O meu objetivo">
+        ${keys.map((k) => `<button type="button" class="obj-opt${k === cur ? ' on' : ''}" data-action="set-objective" data-obj="${k}" role="radio" aria-checked="${k === cur}">
+          <span class="obj-dot" aria-hidden="true">${k === cur ? icon('check', 14) : ''}</span>
+          <span class="obj-txt"><b>${esc(OBJECTIVES[k][0])}</b><small>${esc(OBJECTIVES[k][1])}</small></span></button>`).join('')}
+      </div>
       <div class="cy-block"><div class="dd-group-title">Treino</div><p>${esc(o[2])}</p></div>
       <div class="cy-block"><div class="dd-group-title">Alimentação</div><p>${esc(o[3])}</p></div>
-      <p class="footnote">O objetivo define o teu plano de treino e é atribuído no teu utilizador. Se quiseres mudá-lo, diz-me.</p>
-    </div>`;
+      <p class="footnote">O objetivo ajusta as sugestões de alimentação e as mensagens. O plano de treino base é o mesmo para todas.</p>
+    </div>
+
+    `;
+}
+
+async function setObjective(btn) {
+  const obj = btn.dataset.obj;
+  if (!FOCUS[obj] || obj === focusOf()) return;
+  const data = { ...profileOf(), objective: obj };
+  try {
+    await api.setProfile(uid(), state.pin, data);
+    state.data.profile = data;
+    render();
+    pop(1.1);
+    toast('Objetivo atualizado.');
+  } catch (e) { toast(errorMessage(e.code)); }
 }
 
 function renderPerfil() {
@@ -1064,7 +1093,7 @@ async function saveProfile(btn) {
     if (lmp && !pregnancyInfo({ status, last_period: lmp }, today())) { flash.textContent = pregnancyPreview(lmp); return; }
     if (lmp) cycle.last_period = lmp;
   }
-  const data = { first_name: val('pf-first'), last_name: val('pf-last'), gender: $('pf-gender').value, birth, cycle };
+  const data = { ...profileOf(), first_name: val('pf-first'), last_name: val('pf-last'), gender: $('pf-gender').value, birth, cycle };
   btn.disabled = true;
   const [cx, cy] = centerOf(btn);
   try {
@@ -1270,7 +1299,7 @@ function renderProgresso() {
 
   const goal = goalFor(key);
   const sum = summarize({ logs: state.data.logs, gymDays: state.data.gymDays }, key, goal, t);
-  const story = buildStory(sum, { name: displayName(), focus: state.user.focus });
+  const story = buildStory(sum, { name: displayName(), focus: focusOf() });
   const count = sum.sessions;
 
   const chips = [`<span class="s-chip">${icon('calendar', 14)}${goal ? `${count}/${goal} treinos` : `${count} ${count === 1 ? 'treino' : 'treinos'}`}</span>`];
@@ -1300,7 +1329,7 @@ function renderProgresso() {
     const iso = `${key}-${pad2(d)}`;
     const future = iso > t;
     const done = !future && (state.data.gymDays.has(iso) || logDays.has(iso));
-    cells += `<button style="--k:${d}" class="cal-day${done ? ' done' : ''}${iso === t ? ' today' : ''}${iso === state.selectedDay ? ' sel' : ''}${future ? ' future' : ''}" data-action="select-day" data-date="${iso}" aria-pressed="${done}"${future ? ' disabled aria-label="Ainda não chegou"' : ''}>${d}</button>`;
+    cells += `<button style="--k:${d}" class="cal-day${done ? ' done' : ''}${iso === t ? ' today' : ''}${iso === state.selectedDay ? ' sel' : ''}${future ? ' future' : ''}" data-action="select-day" data-date="${iso}" aria-pressed="${done}"${future ? ` disabled aria-label="${d}, ainda não chegou"` : ''}>${d}</button>`;
   }
 
   const showGoalCard = isCurrent && (!goal || state.editingGoal);
@@ -1533,6 +1562,7 @@ function onClick(ev) {
     case 'add-set': addSetRow(el); return;
     case 'save-measurement': saveMeasurement(el); return;
     case 'save-profile': saveProfile(el); return;
+    case 'set-objective': setObjective(el); return;
     case 'period-today': periodStartedToday(el); return;
     case 'cycle-day': state.cycleDay = d.date; render(); return;
     case 'edit-log':
@@ -1602,8 +1632,10 @@ function showLogin() {
       <input id="lg-pass" name="password" type="password" autocomplete="current-password" placeholder="••••"></label>
     <div class="pin-error" id="pin-error" role="alert"></div>
     <button class="save-btn" id="lg-submit" type="submit">Entrar</button>
+    <button type="button" class="link-btn rg-login" id="lg-register">Ainda não tens conta? Criar conta</button>
   </form>`;
   const form = $('login-form');
+  $('lg-register').addEventListener('click', () => showRegister());
   (last ? $('lg-pass') : $('lg-number')).focus();
 
   form.addEventListener('submit', async (e) => {
@@ -1630,6 +1662,135 @@ function showLogin() {
       btn.disabled = false;
     }
   });
+}
+
+// ---------- criar conta própria ----------
+function showRegister(inviteCode = '') {
+  splashEl.classList.add('pin-mode');
+  const reg = { step: 1, code: inviteCode, username: '', password: '', first: '', last: '', gender: '', bd: '', bm: '', by: '', objective: '', weight: '', fat: '', muscle: '' };
+  const keys = ['hipertrofia', 'definicao', 'emagrecimento', 'saude'];
+
+  const stepHtml = () => {
+    if (reg.step === 1) return `
+      <div class="login-title">Criar conta</div>
+      <div class="login-sub">Passo 1 de 3 · A tua conta</div>
+      <label class="lf"><span>${icon('star', 15)}Código de convite</span>
+        <input id="rg-code" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="40" placeholder="o código que recebeste" value="${esc(reg.code)}"></label>
+      <label class="lf"><span>${icon('user', 15)}Nome de utilizador</span>
+        <input id="rg-user" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="30" placeholder="ex.: ana.silva" value="${esc(reg.username)}"></label>
+      <label class="lf"><span>${icon('lock', 15)}Palavra-passe (mínimo 6 caracteres)</span>
+        <input id="rg-pass" type="password" autocomplete="new-password" placeholder="••••••" value="${esc(reg.password)}"></label>`;
+    if (reg.step === 2) return `
+      <div class="login-title">Sobre ti</div>
+      <div class="login-sub">Passo 2 de 3 · Podes mudar tudo mais tarde no Perfil</div>
+      <label class="lf"><span>Nome próprio</span><input id="rg-first" type="text" autocomplete="given-name" maxlength="30" value="${esc(reg.first)}"></label>
+      <label class="lf"><span>Apelido (opcional)</span><input id="rg-last" type="text" autocomplete="family-name" maxlength="30" value="${esc(reg.last)}"></label>
+      <label class="lf"><span>Género</span><select id="rg-gender"><option value="">Escolher…</option>${GENDERS.map((g) => `<option${g === reg.gender ? ' selected' : ''}>${g}</option>`).join('')}</select></label>
+      <div class="lf"><span>Data de nascimento (opcional)</span>
+        <div class="rg-birth">
+          <select id="rg-bd" aria-label="Dia"><option value="">Dia</option>${Array.from({ length: 31 }, (_, i) => `<option${String(i + 1) === reg.bd ? ' selected' : ''}>${i + 1}</option>`).join('')}</select>
+          <select id="rg-bm" aria-label="Mês"><option value="">Mês</option>${MONTH_NAMES.map((n, i) => `<option value="${i + 1}"${String(i + 1) === reg.bm ? ' selected' : ''}>${n}</option>`).join('')}</select>
+          <select id="rg-by" aria-label="Ano"><option value="">Ano</option>${Array.from({ length: 91 }, (_, i) => { const y = new Date().getFullYear() - 10 - i; return `<option${String(y) === reg.by ? ' selected' : ''}>${y}</option>`; }).join('')}</select>
+        </div></div>`;
+    return `
+      <div class="login-title">O teu objetivo</div>
+      <div class="login-sub">Passo 3 de 3 · O treino base é igual para todas</div>
+      <div class="obj-list" role="radiogroup" aria-label="O meu objetivo">
+        ${keys.map((k) => `<button type="button" class="obj-opt${k === reg.objective ? ' on' : ''}" data-obj="${k}" role="radio" aria-checked="${k === reg.objective}">
+          <span class="obj-dot" aria-hidden="true">${k === reg.objective ? icon('check', 14) : ''}</span>
+          <span class="obj-txt"><b>${esc(OBJECTIVES[k][0])}</b><small>${esc(OBJECTIVES[k][1])}</small></span></button>`).join('')}
+      </div>
+      <div class="lf"><span>Medidas de hoje (opcional)</span>
+        <div class="rg-meas">
+          <label class="rg-m"><small>Peso (kg)</small><input id="rg-weight" inputmode="decimal" value="${esc(reg.weight)}"></label>
+          <label class="rg-m"><small>Gordura (%)</small><input id="rg-fat" inputmode="decimal" value="${esc(reg.fat)}"></label>
+          <label class="rg-m"><small>Músculo (kg)</small><input id="rg-muscle" inputmode="decimal" value="${esc(reg.muscle)}"></label>
+        </div></div>`;
+  };
+
+  const read = () => {
+    const v = (id) => { const el = $(id); return el ? el.value.trim() : null; };
+    if (reg.step === 1) { reg.code = v('rg-code'); reg.username = v('rg-user'); reg.password = $('rg-pass').value; }
+    if (reg.step === 2) { reg.first = v('rg-first'); reg.last = v('rg-last'); reg.gender = v('rg-gender'); reg.bd = v('rg-bd'); reg.bm = v('rg-bm'); reg.by = v('rg-by'); }
+    if (reg.step === 3) { reg.weight = v('rg-weight'); reg.fat = v('rg-fat'); reg.muscle = v('rg-muscle'); }
+  };
+  const num = (s) => Number(String(s).replace(',', '.'));
+
+  const check = () => {
+    if (reg.step === 1) {
+      if (!reg.code) return 'Escreve o código de convite que recebeste.';
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]{2,29}$/.test(reg.username)) return errorMessage('invalid_username');
+      if (reg.password.length < 6) return errorMessage('weak_password');
+    }
+    if (reg.step === 2) {
+      if (!reg.first) return 'Diz-nos o teu nome próprio.';
+      if (reg.bd || reg.bm || reg.by) {
+        if (!(reg.bd && reg.bm && reg.by)) return 'Completa a data de nascimento (dia, mês e ano) ou deixa tudo em branco.';
+        if (Number(reg.bd) > daysIn(Number(reg.by), Number(reg.bm))) return 'Essa data de nascimento não existe. Confirma o dia.';
+      }
+    }
+    if (reg.step === 3) {
+      if (!reg.objective) return 'Escolhe o objetivo que mais combina contigo.';
+      const rng = [[reg.weight, 20, 400, 'peso'], [reg.fat, 1, 80, 'gordura corporal'], [reg.muscle, 5, 200, 'massa muscular']];
+      for (const [val, lo, hi, nome] of rng) if (val && !(num(val) >= lo && num(val) <= hi)) return `Confirma o valor de ${nome} (entre ${lo} e ${hi}).`;
+    }
+    return '';
+  };
+
+  const draw = () => {
+    splashInner.innerHTML = `<form class="login-box reg-box rise" id="reg-form" novalidate>
+      ${stepHtml()}
+      <div class="pin-error" id="rg-error" role="alert"></div>
+      <div class="rg-actions">
+        ${reg.step > 1 ? '<button type="button" class="rg-back" id="rg-back">Voltar</button>' : ''}
+        <button class="save-btn" id="rg-next" type="submit">${reg.step === 3 ? 'Criar conta' : 'Seguinte'}</button>
+      </div>
+      <button type="button" class="link-btn rg-login" id="rg-login">Já tenho conta · Entrar</button>
+    </form>`;
+    const first = splashInner.querySelector('input, select');
+    if (first) first.focus();
+    $('rg-login').addEventListener('click', showLogin);
+    if (reg.step > 1) $('rg-back').addEventListener('click', () => { read(); reg.step--; draw(); });
+    splashInner.querySelectorAll('.obj-opt').forEach((b) => b.addEventListener('click', () => {
+      reg.objective = b.dataset.obj;
+      splashInner.querySelectorAll('.obj-opt').forEach((o) => {
+        const on = o === b;
+        o.classList.toggle('on', on); o.setAttribute('aria-checked', String(on));
+        o.querySelector('.obj-dot').innerHTML = on ? icon('check', 14) : '';
+      });
+    }));
+    $('reg-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      read();
+      const err = $('rg-error');
+      const msg = check();
+      if (msg) { err.textContent = msg; return; }
+      if (reg.step < 3) { reg.step++; draw(); return; }
+      const btn = $('rg-next');
+      btn.disabled = true;
+      err.textContent = 'A criar a tua conta…';
+      const profile = { first_name: reg.first, last_name: reg.last, gender: reg.gender, birth: reg.bd ? `${reg.by}-${pad2(reg.bm)}-${pad2(reg.bd)}` : null, objective: reg.objective };
+      const meas = {};
+      if (reg.weight) meas.weight = num(reg.weight);
+      if (reg.fat) meas.body_fat = num(reg.fat);
+      if (reg.muscle) meas.muscle = num(reg.muscle);
+      try {
+        const out = await api.register(reg.username, reg.password, reg.code, profile, Object.keys(meas).length ? meas : null);
+        try { localStorage.setItem(LAST_NUMBER_KEY, reg.username); } catch { /* ignora */ }
+        history.replaceState(null, '', location.pathname);
+        await startSession(out.profile, reg.password);
+        setTimeout(() => toast('Conta criada! Já podes começar a treinar.'), 700);
+      } catch (ex) {
+        err.textContent = ex.code === 'server'
+          ? 'Não foi possível criar a conta. Falta correr o ficheiro supabase/atualizar-conta-propria.sql no Supabase.'
+          : errorMessage(ex.code);
+        if (ex.code === 'invalid_code' || ex.code === 'username_taken' || ex.code === 'invalid_username' || ex.code === 'weak_password') { reg.step = 1; setTimeout(() => { draw(); $('rg-error').textContent = errorMessage(ex.code); }, 0); }
+        btn.disabled = false;
+        pop(0.55);
+      }
+    });
+  };
+  draw();
 }
 
 async function startSession(profile, pin) {
@@ -1768,6 +1929,8 @@ addEventListener('pointermove', (e) => {
 
 (async function init() {
   showLogin();
+  const invite = new URLSearchParams(location.search).get('convite');
+  if (invite) showRegister(invite);
   // mantém a sessão ao recarregar a página (só enquanto o separador estiver aberto)
   try {
     const saved = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');

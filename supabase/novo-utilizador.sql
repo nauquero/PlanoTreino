@@ -28,3 +28,9 @@ values (
 
 -- D) DESBLOQUEAR ALGUÉM (5 palavras-passe erradas = 15 min de bloqueio) --
 -- update public.profiles set failed_attempts = 0, locked_until = null where login_number = 'novo-utilizador';
+
+-- E) CONTAS CRIADAS PELAS PROPRIAS PESSOAS (codigo de convite) ---------------
+-- Corre primeiro supabase/atualizar-conta-propria.sql. Depois:
+-- criar/mudar um codigo:  insert into public.invite_codes (code, max_uses) values ('O-TEU-CODIGO', 20) on conflict (code) do update set max_uses = excluded.max_uses, active = true;
+-- parar de aceitar contas: update public.invite_codes set active = false where code = 'O-TEU-CODIGO';
+-- ver quantas contas cada codigo criou: select code, uses, max_uses, active from public.invite_codes;

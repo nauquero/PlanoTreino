@@ -6,7 +6,7 @@ export const GENDERS = ['Feminino', 'Outro'];
 export const STATUSES = [
   ['cycle', 'Tenho ciclo menstrual'],
   ['pregnant', 'Estou grávida'],
-  ['none', 'Já não tenho menstruação']
+  ['none', 'Não tenho menstruação']
 ];
 
 export const PHASES = {

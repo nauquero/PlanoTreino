@@ -2,11 +2,11 @@
 // Ficheiros da app: rede primeiro (vês sempre a versão mais recente) e cache
 // só quando estás offline. Tipos de letra: cache primeiro.
 // Os dados (Supabase) nunca passam por aqui: vêm sempre da rede.
-const CACHE = 'plano-treino-v14';
+const CACHE = 'plano-treino-v15';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest',
   'css/style.css',
-  'js/app.js', 'js/api.js', 'js/config.js', 'js/data.js', 'js/icons.js', 'js/fx.js', 'js/progress.js', 'js/timer.js', 'js/gaby-data.js', 'js/cycle.js',
+  'js/app.js', 'js/api.js', 'js/config.js', 'js/data.js', 'js/icons.js', 'js/fx.js', 'js/progress.js', 'js/timer.js', 'js/gaby-data.js', 'js/cycle.js', 'js/rest-bg.js',
   'fonts/poppins-400.woff2', 'fonts/poppins-500-italic.woff2', 'fonts/poppins-500.woff2', 'fonts/poppins-600.woff2', 'fonts/poppins-700.woff2',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'
 ];
@@ -47,4 +47,10 @@ self.addEventListener('fetch', (e) => {
       }
     })
   );
+});
+
+// ao tocar na notificação do descanso, volta à app
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => (list.length ? list[0].focus() : self.clients.openWindow('./'))));
 });

@@ -10,7 +10,11 @@ const ERRORS = {
   future_date: 'Essa data ainda não aconteceu. Só podes registar hoje ou dias passados.',
   not_found: 'Esse registo já não existe. Atualiza a página.',
   duplicate: 'Já existe um exercício com esse nome neste grupo.',
-  invalid: 'Valor inválido. Confirma e tenta de novo.'
+  invalid: 'Valor inválido. Confirma e tenta de novo.',
+  invalid_code: 'Código de convite inválido. Pede-o a quem te enviou a app.',
+  username_taken: 'Esse nome de utilizador já existe. Escolhe outro.',
+  invalid_username: 'O utilizador deve ter 3 a 30 caracteres: letras, números, ponto, hífen ou _.',
+  weak_password: 'A palavra-passe deve ter pelo menos 6 caracteres.'
 };
 export const errorMessage = (code) => ERRORS[code] || 'Ocorreu um erro. Tenta de novo.';
 
@@ -39,6 +43,7 @@ async function rpc(fn, args) {
 
 const remote = {
   login: (number, pin) => rpc('login_user', { p_number: number, p_pin: pin }),
+  register: (username, password, code, profile, measurement) => rpc('register_user', { p_username: username, p_password: password, p_code: code, p_profile: profile, p_measurement: measurement }),
   getData: (profile, pin) => rpc('get_data', { p_profile: profile, p_pin: pin }),
   addMeasurement: (profile, pin, entry) => rpc('add_measurement', { p_profile: profile, p_pin: pin, p_entry: entry }),
   deleteMeasurement: (profile, pin, date) => rpc('delete_measurement', { p_profile: profile, p_pin: pin, p_date: date }),
@@ -85,6 +90,19 @@ const demo = {
     if (!n || n.length > 40 || String(pin).length < 4) throw new ApiError('invalid_pin');
     const focus = n === '1' ? 'hipertrofia' : n === '2' ? 'definicao' : n === 'gabi' ? 'emagrecimento' : 'saude';
     return { ok: true, profile: { id: `demo-${n}`, name: `Convidada ${n}`, focus, cardio: n === '1' ? 'escadas' : 'bicicleta' } };
+  },
+  async register(username, password, code, profile, measurement) {
+    const u = String(username).trim().toLowerCase();
+    if (!String(code).trim()) throw new ApiError('invalid_code');
+    if (!/^[a-z0-9][a-z0-9._-]{2,29}$/.test(u)) throw new ApiError('invalid_username');
+    if (String(password).length < 6) throw new ApiError('weak_password');
+    const id = `demo-${u}`;
+    const d = demoLoad(id);
+    d.profile = profile;
+    d.measurements = measurement ? [{ date: todayIso(), ...measurement }] : [];
+    demoSave(id, d);
+    const name = (profile.first_name || '').trim() || u;
+    return { ok: true, profile: { id, name, focus: 'saude', cardio: 'bicicleta' } };
   },
   async getData(profile) { return { ok: true, version: 5, ...demoLoad(profile) }; },
   async addMeasurement(profile, pin, entry) {

@@ -40,6 +40,12 @@ O login é por **nome de utilizador + palavra-passe** (o utilizador não disting
 - **Criar uma pessoa nova:** abre `supabase/novo-utilizador.sql`, muda os valores marcados com `<<<` e corre no SQL Editor do Supabase. O ficheiro tem também os comandos para ver quem existe, mudar uma palavra-passe e desbloquear alguém.
 - Cada pessoa começa sem dados: define a meta do mês na aba Progresso e adiciona a primeira medição.
 
+### Criar conta própria (com código de convite)
+Quem recebe um convite cria a sua conta sozinha, em 3 passos (conta, sobre ela, objetivo e medidas). Para ativar corre `supabase/atualizar-conta-propria.sql` no SQL Editor e depois cria um código de convite com a linha de exemplo que está no fim desse ficheiro (`insert into public.invite_codes ...`). O link para enviar às pessoas é `https://nauquero.github.io/PlanoTreino/?convite=O-TEU-CODIGO`: a app abre no registo com o código já preenchido. Cada código tem um número máximo de contas e pode ser desativado.
+
+### Objetivo e temporizador
+No Perfil cada pessoa escolhe o objetivo (hipertrofia, perda de gordura + hipertrofia, emagrecer com saúde, saúde e bem-estar), que ajusta a alimentação e as mensagens; o plano de treino base é igual para todas. O temporizador de descanso mostra a contagem numa notificação multimédia enquanto a app está em segundo plano e toca um alarme no fim (depende do telemóvel e do navegador).
+
 ### Perfil e ciclo menstrual
 A aba Perfil guarda nome, apelido, género, data de nascimento e os dados do ciclo (última menstruação, duração do ciclo, gravidez, etc.). A aba Progresso mostra a fase do ciclo e o que esperar em cada dia. Para ativar corre `supabase/atualizar-perfil.sql` no SQL Editor (seguro repetir, não apaga dados). A aba do Sono foi retirada da app; os registos antigos continuam guardados na base de dados.
 
