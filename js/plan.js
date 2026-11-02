@@ -72,10 +72,9 @@ export function quoteOf(isoDate) {
 }
 
 export function greetingOf(hour) {
-  if (hour < 6) return 'Boa madrugada';
-  if (hour < 12) return 'Bom dia';
-  if (hour < 20) return 'Boa tarde';
-  return 'Boa noite';
+  if (hour >= 4 && hour < 14) return 'Bom dia';
+  if (hour >= 14 && hour < 19) return 'Boa tarde';
+  return 'Boa noite'; // das 19h às 4h
 }
 
 // Plano guardado no perfil: { done, areas[], cardio[], sports[], days }

@@ -130,7 +130,8 @@ function exercisesOf(groupKey) {
     });
   const catalogue = new Set(g.exercises.map((e) => e.name.toLowerCase()));
   const own = rows.filter((c) => !catalogue.has(c.name.toLowerCase())).map(customToEx);
-  return [...base, ...own];
+  const hidden = new Set(hiddenEx());
+  return [...base, ...own].filter((ex) => !hidden.has(ex.name));
 }
 
 // Sugestões do catálogo ainda não visíveis neste grupo
@@ -147,6 +148,7 @@ function groupOf(name) {
   return c && GROUPS[c.group_key] ? c.group_key : 'outros';
 }
 
+const hiddenEx = () => (Array.isArray(state.data.profile && state.data.profile.hidden_ex) ? state.data.profile.hidden_ex : []);
 const isGaby = () => !!state.user && state.user.focus === 'emagrecimento';
 const groupLabel = (k) => (k === 'outros' ? 'Outros' : (GROUPS[k] || GABY_GROUPS[k]).label);
 const groupOrder = () => [...Object.keys(GROUPS), ...Object.keys(GABY_GROUPS).filter((k) => !(k in GROUPS)), 'outros'];
@@ -322,13 +324,14 @@ function renderTreino() {
           <div class="rest-head">${icon('timer', 16)}<span>Descanso recomendado: <b>${rest.range}</b></span></div>
           <button class="rest-start" data-action="rest-start" data-sec="${rest.sec}" data-ex="${esc(ex.name)}">${icon('play', 15)}Iniciar ${fmtClock(rest.sec)}</button>
         </div>` : '';
-    const removeHtml = ex.custom
-      ? (state.confirm === `cex:${ex.id}`
-        ? `<div class="log-entry confirm"><span>Remover este exercício? (os registos ficam guardados)</span><span class="le-actions"><button class="mini danger" data-action="del-yes" data-kind="cex" data-id="${ex.id}">Sim</button><button class="mini" data-action="del-no">Não</button></span></div>`
-        : `<button class="remove-ex" data-action="del-cex" data-id="${ex.id}">${icon('trash', 14)}Remover este exercício</button>`)
+    const removeHtml = '';
+    const hideKey = ex.custom ? `cex:${ex.id}` : `hide:${ex.name}`;
+    const confirmHtml = state.confirm === hideKey
+      ? `<div class="log-entry confirm ex-confirm"><span>Retirar este exercício do treino? (os registos ficam guardados)</span><span class="le-actions"><button class="mini danger" data-action="del-yes" data-kind="${ex.custom ? 'cex' : 'hide'}" data-id="${esc(ex.custom ? ex.id : ex.name)}">Sim</button><button class="mini" data-action="del-no">Não</button></span></div>`
       : '';
     return `
     <div class="exercise${open ? ' open' : ''}">
+      <button class="ex-x" data-action="hide-ex" data-key="${esc(hideKey)}" aria-label="Retirar ${esc(ex.name)} do treino">${icon('x', 15)}</button>
       <button class="ex-head" data-action="toggle-ex" data-ex="${esc(ex.name)}" aria-expanded="${open}">
         <span class="ex-title">
           <span class="ex-name">${esc(ex.name)}</span>
@@ -336,6 +339,7 @@ function renderTreino() {
         </span>
         <span class="chev">${icon('chevron-down', 18)}</span>
       </button>
+      ${confirmHtml}
       <div class="ex-body"><div class="ex-clip"><div class="ex-content">
         <div class="tech-text">${esc(ex.tech)}</div>
         ${ex.mistakes.length ? `<div class="mistakes">
@@ -642,6 +646,14 @@ async function addSuggestion(btn) {
   if (!ex) return;
   btn.disabled = true;
   try {
+    if (hiddenEx().includes(ex.name)) { // só estava escondido: volta a aparecer
+      const data = { ...profileOf(), hidden_ex: hiddenEx().filter((n) => n !== ex.name) };
+      await api.setProfile(uid(), state.pin, data);
+      state.data.profile = data;
+      state.addingExercise = false; state.openExercise = ex.name;
+      render(); popSuccess(); scrollToAndFocus('.exercise.open');
+      return;
+    }
     await api.addCustomExercise(uid(), state.pin, {
       group_key: state.group, name: ex.name, kind: ex.kind || GROUPS[state.group].kind, effort: ex.effort, distance_unit: ex.distanceUnit || ''
     });
@@ -663,10 +675,15 @@ async function confirmDelete(kind, id) {
     if (kind === 'log') await api.deleteLog(uid(), state.pin, Number(id));
     else if (kind === 'meas') await api.deleteMeasurement(uid(), state.pin, id);
     else if (kind === 'cex') await api.deleteCustomExercise(uid(), state.pin, Number(id));
+    else if (kind === 'hide') {
+      const data = { ...profileOf(), hidden_ex: [...new Set([...hiddenEx(), id])].slice(-80) };
+      await api.setProfile(uid(), state.pin, data);
+      state.data.profile = data;
+    }
     state.confirm = null;
     if (kind === 'log' && state.editingLog === Number(id)) state.editingLog = null;
     if (kind === 'meas' && state.editingMeas === id) state.editingMeas = null;
-    if (kind === 'cex') state.openExercise = null;
+    if (kind === 'cex' || kind === 'hide') state.openExercise = null;
     await refreshData();
     render();
     pop(0.7);
@@ -1166,11 +1183,19 @@ function startWelcome(mode = 'edit') {
     profile: profileOf(), name: displayName(), pages, mode,
     onSave: async ({ objective, plan }) => {
       const data = mode === 'objective' ? { ...profileOf(), objective } : { ...profileOf(), objective, plan };
+      delete data.new_account;
       try { await api.setProfile(uid(), state.pin, data); } catch (e) { throw new Error(errorMessage(e.code)); }
       state.data.profile = data;
     },
     onFinish: (result) => {
-      if (result !== 'saved') return;
+      if (result !== 'saved') {
+        if (profileOf().new_account) { // não volta a perguntar no próximo login
+          const data = { ...profileOf() }; delete data.new_account;
+          api.setProfile(uid(), state.pin, data).then(() => { state.data.profile = data; }).catch(() => {});
+        }
+        if (mode === 'first') { state.page = 'inicio'; render(true); }
+        return;
+      }
       state.allGroups = false;
       state.openExercise = null;
       state.group = 'pernas';
@@ -1273,8 +1298,7 @@ function subTabsHtml(page, items) {
     </div>`;
 }
 const SUBS = {
-  progresso: [['resumo', 'Resumo', 'trend'], ['medicoes', 'Medições', 'activity']],
-  perfil: [['dados', 'O meu perfil', 'user'], ['medicoes', 'Medições', 'activity']]
+  progresso: [['resumo', 'Resumo', 'trend'], ['medicoes', 'Medições', 'activity']]
 };
 
 function renderPerfil() {
@@ -1771,7 +1795,7 @@ function renderNav() {
 const RENDERERS = {
   inicio: renderInicio, treino: renderTreino, alimentacao: renderAlimentacao,
   progresso: () => { if (state.sub.progresso === 'medicoes') pageEl.innerHTML = medicaoHtml(); else renderProgresso(); pageEl.insertAdjacentHTML('afterbegin', subTabsHtml('progresso', SUBS.progresso)); },
-  perfil: () => { if (state.sub.perfil === 'medicoes') pageEl.innerHTML = medicaoHtml(); else renderPerfil(); pageEl.insertAdjacentHTML('afterbegin', subTabsHtml('perfil', SUBS.perfil)); }
+  perfil: renderPerfil
 };
 
 function render(fresh = false) {
@@ -1878,6 +1902,7 @@ function onClick(ev) {
     case 'add-ex-custom': state.addingExercise = 'custom'; render(); scrollToAndFocus('#add-ex-form'); return;
     case 'add-suggest': addSuggestion(el); return;
     case 'add-ex-cancel': state.addingExercise = false; render(); return;
+    case 'hide-ex': state.confirm = d.key; break;
     case 'del-cex': state.confirm = `cex:${d.id}`; render(); return;
     case 'del-no': state.confirm = null; render(); return;
     case 'del-yes': confirmDelete(d.kind, d.id); return;
@@ -2055,7 +2080,7 @@ function showRegister(inviteCode = '') {
       const btn = $('rg-next');
       btn.disabled = true;
       err.textContent = 'A criar a tua conta…';
-      const profile = { first_name: reg.first, last_name: reg.last, gender: reg.gender, birth: reg.bd ? `${reg.by}-${pad2(reg.bm)}-${pad2(reg.bd)}` : null };
+      const profile = { first_name: reg.first, last_name: reg.last, gender: reg.gender, birth: reg.bd ? `${reg.by}-${pad2(reg.bm)}-${pad2(reg.bd)}` : null, new_account: true };
       const meas = {};
       if (reg.weight) meas.weight = num(reg.weight);
       if (reg.fat) meas.body_fat = num(reg.fat);
@@ -2065,7 +2090,7 @@ function showRegister(inviteCode = '') {
         try { localStorage.setItem(LAST_NUMBER_KEY, reg.username); } catch { /* ignora */ }
         history.replaceState(null, '', location.pathname);
         await startSession(out.profile, reg.password);
-        setTimeout(() => startWelcome('first'), 650); // páginas de boas-vindas
+        // as páginas de boas-vindas abrem em startSession (conta nova)
       } catch (ex) {
         err.textContent = ex.code === 'server'
           ? 'Não foi possível criar a conta. Falta correr o ficheiro supabase/atualizar-conta-propria.sql no Supabase.'
@@ -2106,6 +2131,7 @@ async function startSession(profile, pin) {
   window.scrollTo(0, 0);
   if (!outdated && !goalFor(monthKeyOf(new Date()))) setTimeout(() => toast('Novo mês, nova meta! Define-a na aba Progresso.'), 900);
 
+  if (profileOf().new_account && !planCfg().done && !isGaby()) startWelcome('first'); // conta nova: boas-vindas logo
   splashEl.classList.add('leaving');
   clearTimeout(leaveTimer);
   leaveTimer = setTimeout(() => { splashEl.hidden = true; splashEl.classList.remove('leaving'); }, 520);
