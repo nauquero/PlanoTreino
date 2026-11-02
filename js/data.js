@@ -332,7 +332,13 @@ export const GROUPS = {
       E('Padel', 'medio', '45–90 min', 'Aquece bem ombros e tornozelos e mantém-te em movimento, com os joelhos ligeiramente fletidos.', ['Ficar sem te mexer à espera da bola', 'Saltar o aquecimento']),
       E('Aulas de grupo', 'medio', '45–60 min', 'Escolhe o nível certo, ajusta a intensidade ao teu dia e hidrata-te.', ['Copiar o ritmo dos outros e ignorar o teu corpo', 'Não avisar o professor de lesões', 'Não beber água'], { noteLabel: 'Que aula? (ex: spinning)' }),
       E('Yoga / Pilates', 'baixo', '45–60 min', 'Respira de forma calma e controla cada movimento. Foca-te na qualidade e não na amplitude.', ['Forçar a amplitude', 'Prender a respiração']),
-      E('Dança', 'medio', '45–60 min', 'Aquece as articulações e vai aumentando a intensidade aos poucos.', ['Começar a frio com movimentos muito intensos'])
+      E('Dança', 'medio', '45–60 min', 'Aquece as articulações e vai aumentando a intensidade aos poucos.', ['Começar a frio com movimentos muito intensos']),
+      E('Futebol', 'medio-alto', '45–90 min', 'Aquece tornozelos, joelhos e ancas e alterna sprints com recuperação.', ['Saltar o aquecimento', 'Arrancar a frio com sprints']),
+      E('Basquetebol', 'medio-alto', '45–90 min', 'Aquece tornozelos e joelhos e aterra os saltos com os joelhos ligeiramente fletidos.', ['Aterrar com as pernas esticadas', 'Saltar o aquecimento']),
+      E('Voleibol', 'medio', '45–90 min', 'Aquece ombros e tornozelos e mantém-te sempre em posição baixa, pronta para te mexeres.', ['Esquecer o aquecimento dos ombros', 'Aterrar com os joelhos bloqueados']),
+      E('Artes marciais', 'medio-alto', '45–60 min', 'Segue as indicações do treinador, aquece bem e dá prioridade à técnica antes da velocidade.', ['Ir depressa demais sem técnica', 'Saltar o aquecimento']),
+      E('Escalada', 'medio-alto', '45–90 min', 'Aquece dedos, pulsos e ombros e usa as pernas para subir, poupando os braços.', ['Puxar só com os braços', 'Começar logo em vias difíceis']),
+      E('Trilhos', 'medio', '60–180 min', 'Leva água e calçado adequado, sobe a ritmo constante e desce com os joelhos ligeiramente fletidos.', ['Esquecer a hidratação', 'Descer depressa demais'], { distanceUnit: 'km' })
     ]
   }
 };

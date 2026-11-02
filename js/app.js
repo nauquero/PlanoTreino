@@ -11,13 +11,18 @@ import { burst, sparkle, trail, haptic, pop, popSuccess, popDone, isMuted, setMu
 import { summarize, buildStory, rowsOfLog, bestSet, bestHold, MONTH_NAMES } from './progress.js';
 import { createTimer } from './timer.js';
 import { restBgInit, restBgUpdate, restBgDone, restBgStop } from './rest-bg.js';
+import { MUSCLES, MUSCLE_LABEL, OBJECTIVES, OBJECTIVE_KEYS, OBJECTIVE_PLAN, planOf, quoteOf, greetingOf, cardioLabel, sportLabel } from './plan.js';
+import { openWelcome, WELCOME_PAGES, EDIT_PAGES, OBJECTIVE_PAGES } from './welcome.js';
 import { GENDERS, STATUSES, PHASES as CYCLE_PHASES, cycleDayInfo, lateDays, nextPeriod, pregnancyInfo, ageOf, diffDays } from './cycle.js';
 
 // ---------- estado ----------
 const state = {
   user: null,         // { id, name, focus, cardio, tone }
   pin: null,
-  page: 'treino',
+  page: 'inicio',
+  sub: { progresso: 'resumo', perfil: 'dados' }, // sub-páginas: Progresso (resumo | medições) e Perfil (dados | medições)
+  allGroups: false,   // mostra todos os grupos musculares, mesmo os que a pessoa não escolheu
+  restDay: null,      // dia em que disse "hoje descanso"
   group: 'pernas',
   week: 1,            // treino da Gabriela: semana e sessão
   session: 'dia1',
@@ -116,8 +121,9 @@ function exercisesOf(groupKey) {
   const rows = state.data.custom.filter((c) => c.group_key === groupKey);
   const added = new Map(rows.map((c) => [c.name.toLowerCase(), c]));
   const logged = new Set(state.data.logs.map((l) => l.exercise));
+  const chosen = personalChoice(groupKey); // cardio e desportos escolhidos nas boas-vindas
   const base = g.exercises
-    .filter((ex) => CORE.has(ex.name) || added.has(ex.name.toLowerCase()) || logged.has(ex.name))
+    .filter((ex) => (chosen ? chosen.includes(ex.name) : CORE.has(ex.name)) || added.has(ex.name.toLowerCase()) || logged.has(ex.name))
     .map((ex) => {
       const row = added.get(ex.name.toLowerCase());
       return !CORE.has(ex.name) && row ? { ...ex, custom: true, id: row.id } : ex;
@@ -225,11 +231,12 @@ function planCard(plan, cls) {
 }
 
 function tabsHtml() {
-  const active = TABS.find((t) => t.key === state.group || (t.children || []).includes(state.group));
-  const top = TABS.map((t) => {
+  const tabs = visibleTabs();
+  const active = tabs.find((t) => t.key === state.group || (t.children || []).includes(state.group));
+  const top = tabs.map((t) => {
     const isActive = t === active || (t.children && state.group === t.key);
     return `<button class="group-btn${isActive ? ' active' : ''}" data-action="group" data-group="${t.key}">${t.label}</button>`;
-  }).join('');
+  }).join('') + (personalized() ? `<button class="group-btn more" data-action="toggle-groups" aria-pressed="${state.allGroups}">${state.allGroups ? 'Só os meus' : '+ Todos os grupos'}</button>` : '');
   const picking = state.group === 'bracos';
   const sub = active?.children
     ? `<div class="arm-choose${picking ? ' pick' : ''}">
@@ -293,6 +300,7 @@ function addExerciseHtml() {
 
 function renderTreino() {
   if (isGaby()) { renderTreinoGaby(); return; }
+  ensureGroupVisible();
   if (state.group === 'bracos') { pageEl.innerHTML = tabsHtml(); return; } // só a escolha do músculo
   const group = GROUPS[state.group];
   const plan = WARMUP_STRETCH[state.group];
@@ -356,11 +364,28 @@ function renderTreino() {
     comboHtml = `
     <div class="card mint">
       <div class="card-title-row">${icon('target', 16)}Para fechar este treino</div>
-      <div class="combo-text"><b>${esc(group.combo.cardio[state.user.cardio] || group.combo.cardio.bicicleta)}</b> + <b>${esc(group.combo.abs)}</b><br>${esc(group.combo.why)}</div>
+      <div class="combo-text"><b>${esc(personalChoice('cardio') ? `${cardioLabel(personalChoice('cardio')[0])} — 15–20 min` : (group.combo.cardio[state.user.cardio] || group.combo.cardio.bicicleta))}</b> + <b>${esc(group.combo.abs)}</b><br>${esc(group.combo.why)}</div>
     </div>`;
   }
 
-  pageEl.innerHTML = `${tabsHtml()}${planCard(plan.warm, 'warm')}${exercisesHtml}${addExerciseHtml()}${comboHtml}${planCard(plan.stretch, 'stretch')}`;
+  pageEl.innerHTML = `${tabsHtml()}${objectiveTipHtml()}${planCard(plan.warm, 'warm')}${exercisesHtml}${addExerciseHtml()}${comboHtml}${planCard(plan.stretch, 'stretch')}`;
+}
+
+// como o objetivo escolhido muda a forma de treinar
+function objectiveTipHtml() {
+  const k = focusOf();
+  const o = OBJECTIVES[k] || OBJECTIVES.saude;
+  const op = OBJECTIVE_PLAN[k] || OBJECTIVE_PLAN.saude;
+  return `<details class="card obj-plan">
+    <summary>${icon(o[4], 16)}<span>O teu foco: ${esc(o[0])}</span></summary>
+    <ul>
+      <li><b>Repetições:</b> ${esc(op.reps)}, ${esc(op.sets)}</li>
+      <li><b>Descanso:</b> ${esc(op.rest)}</li>
+      <li><b>Cardio:</b> ${esc(op.cardio)}</li>
+    </ul>
+    <p class="plan-rule">${esc(op.tip)}</p>
+    <button class="link-btn" data-action="edit-objective">Alterar objetivo</button>
+  </details>`;
 }
 
 function toggleExercise(head) {
@@ -671,14 +696,18 @@ function paintTimer(s) {
   if (s.done) timerHide = setTimeout(() => { box.hidden = true; box.classList.remove('done'); }, 8000);
   if (s.running) restBgUpdate(s); else if (!s.done) restBgStop();
 }
-const rest = createTimer(paintTimer, (s) => {
-  restBgDone(s.label);
-  if (document.visibilityState === 'visible') popDone();
+let lastTimer = null;
+const rest = createTimer((s) => { lastTimer = s; paintTimer(s); }, (s) => {
+  const ringing = restBgDone(s.label); // o próprio áudio do descanso toca o alarme
+  if (document.visibilityState === 'visible' && !ringing) popDone();
   haptic([220, 110, 220, 110, 320]);
   burst(innerWidth / 2, innerHeight - 150, 30);
 });
 
-restBgInit({ onPlay: () => rest.resume(), onPause: () => rest.pause(), onStop: () => rest.stop() });
+restBgInit({
+  onPlay: () => rest.resume(), onPause: () => rest.pause(), onStop: () => rest.stop(), onAdd: () => rest.add(15),
+  elapsed: () => (lastTimer && lastTimer.running ? lastTimer.total - lastTimer.remaining : 0)
+});
 
 // ---------- Medição corporal ----------
 function lastMeasurement() { return state.data.measurements[state.data.measurements.length - 1]; }
@@ -768,7 +797,7 @@ function histRowHtml(e, unit) {
     </span></div>`;
 }
 
-function renderMedicao() {
+function medicaoHtml() {
   const entries = state.data.measurements;
   const last = lastMeasurement();
   const [, , activeUnit] = metricDef(state.metric);
@@ -793,11 +822,10 @@ function renderMedicao() {
     </div>`;
 
   if (!last) {
-    pageEl.innerHTML = `<div class="card"><h2>Medição Corporal</h2><p class="diet-note">Ainda não tens medições guardadas. Preenche o que tiveres (podes deixar campos em branco) e começa a acompanhar a tua evolução.</p></div>${formCard}`;
-    return;
+    return `<div class="card"><h2>Medição Corporal</h2><p class="diet-note">Ainda não tens medições guardadas. Preenche o que tiveres (podes deixar campos em branco) e começa a acompanhar a tua evolução.</p></div>${formCard}`;
   }
 
-  pageEl.innerHTML = `
+  return `
     <div class="card">
       <h2>Medição Corporal</h2>
       <div class="stats-sub">Última medição: ${fmtDate(last.date)}</div>
@@ -929,11 +957,237 @@ function renderAlimentacao() {
     </div>`;
 }
 
+// ---------- Início ----------
+const WEEK_LETTERS = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'];
+
+function trainedDaySet() {
+  const s = new Set(state.data.gymDays);
+  state.data.logs.forEach((l) => s.add(l.date));
+  return s;
+}
+
+// dias seguidos com treino (se hoje ainda não treinou, conta a partir de ontem)
+function streakOf() {
+  const days = trainedDaySet();
+  let d = new Date();
+  if (!days.has(isoDate(d))) d = addDaysLocal(d, -1);
+  let n = 0;
+  while (n < 366 && days.has(isoDate(d))) { n++; d = addDaysLocal(d, -1); }
+  return n;
+}
+const addDaysLocal = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+
+function weekStripHtml() {
+  const now = new Date();
+  const mon = addDaysLocal(now, -((now.getDay() + 6) % 7));
+  const days = trainedDaySet();
+  const t = today();
+  return `<div class="week-strip" role="list" aria-label="Esta semana">${WEEK_LETTERS.map((l, i) => {
+    const d = addDaysLocal(mon, i), iso = isoDate(d);
+    const done = iso <= t && days.has(iso);
+    const cls = `ws-day${done ? ' done' : ''}${iso === t ? ' today' : ''}${iso > t ? ' future' : ''}`;
+    return `<div class="${cls}" role="listitem" style="--k:${i}" aria-label="${d.getDate()}${done ? ', treinaste' : iso > t ? ', ainda não chegou' : ''}"><small>${l}</small><span>${done ? icon('check', 13) : d.getDate()}</span></div>`;
+  }).join('')}</div>`;
+}
+
+const TILES = [
+  ['treino', 'Treino', 'dumbbell', 'Exercícios, cargas e descanso', 'rose'],
+  ['alimentacao', 'Alimentação', 'leaf', 'Refeições, proteína e água', 'mint'],
+  ['progresso', 'Progresso', 'trend', 'Calendário, metas e medições', 'lilac'],
+  ['perfil', 'Perfil', 'user', 'O teu plano e os teus dados', 'peach']
+];
+
+function renderInicio() {
+  const now = new Date();
+  const t = today();
+  const key = monthKeyOf(now);
+  const goal = goalFor(key);
+  const sum = summarize({ logs: state.data.logs, gymDays: state.data.gymDays }, key, goal, t);
+  const count = sum.sessions;
+  const plan = planCfg();
+  const doneToday = trainedToday();
+  const sug = suggestToday();
+  const streak = streakOf();
+  const dateLabel = now.toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long' });
+  const w = lastWeight();
+  const ms = state.data.measurements;
+  const prevW = ms.length > 1 ? [...ms.slice(0, -1)].reverse().map((m) => m.weight).find((x) => x !== null && x !== undefined && Number(x) > 0) : null;
+  const dW = w !== null && prevW ? Math.round((w - Number(prevW)) * 10) / 10 : null;
+
+  let todayCard;
+  if (doneToday) {
+    todayCard = `<div class="card today-card done">
+      <div class="today-q">${icon('check', 22)}<h2>Treino de hoje feito!</h2></div>
+      <p class="today-sub">${streak > 1 ? `Já são ${streak} dias seguidos. ` : ''}Agora hidrata-te, come bem e descansa: é aí que o músculo cresce.</p>
+      <div class="today-actions"><button class="save-btn" data-action="go-page" data-page="progresso">${icon('trend', 16)} Ver o meu progresso</button></div>
+    </div>`;
+  } else if (state.restDay === t) {
+    todayCard = `<div class="card today-card rest">
+      <div class="today-q">${icon('moon', 22)}<h2>Hoje é dia de descanso</h2></div>
+      <p class="today-sub">Descansar também faz parte do plano. Dorme bem, bebe água e amanhã voltas com tudo.</p>
+      <div class="today-actions"><button class="save-btn alt" data-action="home-go">${icon('dumbbell', 16)} Afinal vou treinar</button></div>
+    </div>`;
+  } else {
+    todayCard = `<div class="card today-card">
+      <div class="today-q"><span class="today-bolt" aria-hidden="true">${icon('flame', 22)}</span><h2>É dia de treino hoje?</h2></div>
+      ${sug ? `<p class="today-sub">Sugestão para hoje: <b>${esc(sug.label)}</b>${sug.since === null ? ' (ainda não treinaste este músculo)' : sug.since === 0 ? '' : ` (último treino há ${sug.since} ${sug.since === 1 ? 'dia' : 'dias'})`}.</p>` : '<p class="today-sub">Abre o treino da semana e vê o que está planeado para hoje.</p>'}
+      <div class="today-actions">
+        <button class="save-btn" data-action="home-go">${icon('dumbbell', 16)} Sim, bora!</button>
+        <button class="save-btn alt" data-action="toggle-day" data-date="${t}">${icon('check', 16)} Já treinei</button>
+        <button class="save-btn ghost" data-action="home-rest">${icon('moon', 16)} Hoje descanso</button>
+      </div>
+    </div>`;
+  }
+
+  const planBanner = isGaby() ? '' : plan.done ? `<div class="card plan-mini">
+      <div class="pm-head"><h2>${icon('sparkles', 18)} O teu plano</h2><button class="link-btn" data-action="edit-plan">Editar</button></div>
+      <div class="plan-chips">
+        ${plan.areas.slice(0, 6).map((k) => `<span class="plan-chip">${icon('dumbbell', 13)}${esc(MUSCLE_LABEL[k])}</span>`).join('')}${plan.areas.length > 6 ? `<span class="plan-chip">+${plan.areas.length - 6}</span>` : ''}
+        ${plan.days ? `<span class="plan-chip">${icon('calendar', 13)}${plan.days}×/semana</span>` : ''}
+      </div></div>`
+    : `<div class="card plan-cta">
+      <div class="pc-orb" aria-hidden="true">${icon('sparkles', 26)}</div>
+      <div class="pc-text"><h2>Personaliza o teu plano</h2><p>Escolhe o objetivo, os músculos, o cardio e os desportos. O treino passa a mostrar só o que te interessa.</p></div>
+      <button class="save-btn" data-action="start-plan">Começar</button></div>`;
+
+  pageEl.innerHTML = `
+    <div class="card home-hero tilt">
+      <span class="hh-spark s1" aria-hidden="true">${icon('sparkles', 18)}</span><span class="hh-spark s2" aria-hidden="true">${icon('sparkles', 12)}</span><span class="hh-spark s3" aria-hidden="true">${icon('star', 11)}</span>
+      <div class="hh-date">${esc(dateLabel)}</div>
+      <h2 class="hh-title">${greetingOf(now.getHours())}, ${esc(displayName())}!</h2>
+      <p class="hh-quote">“${esc(quoteOf(t))}”</p>
+    </div>
+
+    ${todayCard}
+
+    <div class="card home-month">
+      <div class="hm-head"><h2>${MONTH_NAMES[now.getMonth()]} em resumo</h2><button class="link-btn" data-action="go-page" data-page="progresso">Ver tudo</button></div>
+      <div class="cal-summary">
+        <div class="ring">
+          <svg viewBox="0 0 100 100" aria-hidden="true">
+            <circle class="ring-bg" cx="50" cy="50" r="42"/>
+            <circle class="ring-fg" id="ring-fg" cx="50" cy="50" r="42" pathLength="100" stroke-dasharray="100" stroke-dashoffset="${ringOffset(count, goal)}"/>
+          </svg>
+          <div class="ring-num" id="ring-num">${count}</div>
+        </div>
+        <div>
+          <div class="cal-count" id="cal-count">${count} ida${count !== 1 ? 's' : ''} ao ginásio este mês</div>
+          <div class="cal-goal">${goal ? `Meta: ${goal} dias de treino` : 'Ainda sem meta este mês'}</div>
+          ${goal ? '' : `<button class="link-btn" data-action="home-goal" data-n="${Math.min(daysInMonth(key), (plan.days || 3) * 4)}">Definir meta de ${Math.min(daysInMonth(key), (plan.days || 3) * 4)} dias</button>`}
+        </div>
+      </div>
+      ${weekStripHtml()}
+      <div class="mini-stats">
+        <div class="mini-stat" style="--k:0">${icon('flame', 16)}<b>${streak}</b><span>${streak === 1 ? 'dia seguido' : 'dias seguidos'}</span></div>
+        <div class="mini-stat" style="--k:1">${icon('activity', 16)}<b>${sum.minutes}</b><span>min de cardio</span></div>
+        <div class="mini-stat" style="--k:2">${icon('star', 16)}<b>${sum.bests.length}</b><span>${sum.bests.length === 1 ? 'recorde' : 'recordes'}</span></div>
+        <div class="mini-stat" style="--k:3">${icon('trend', 16)}<b>${w !== null ? ptNum(w) : '–'}</b><span>${w !== null ? `kg${dW ? ` (${dW > 0 ? '+' : ''}${ptNum(dW)})` : ''}` : 'sem peso'}</span></div>
+      </div>
+    </div>
+
+    ${planBanner}
+
+    <div class="card home-tiles-card">
+      <h2>O que podes fazer aqui</h2>
+      <div class="home-tiles">${TILES.map(([k, label, ic, text, tone], i) => `
+        <button class="home-tile ${tone}" style="--k:${i}" data-action="go-page" data-page="${k}"><span class="ht-ico">${icon(ic, 22)}</span><b>${label}</b><small>${text}</small></button>`).join('')}</div>
+    </div>`;
+}
+
+async function setMonthGoal(btn) {
+  const key = monthKeyOf(new Date());
+  const days = Number(btn.dataset.n);
+  btn.disabled = true;
+  try {
+    await api.setGoal(uid(), state.pin, key, days);
+    await refreshData();
+    render();
+    popSuccess();
+    toast(`Meta definida: ${days} dias de treino.`);
+  } catch (e) { btn.disabled = false; toast(errorMessage(e.code)); }
+}
+
+// ---------- Plano personalizado (escolhas das boas-vindas) ----------
+const planCfg = () => planOf(profileOf());
+const personalized = () => !!state.user && !isGaby() && planCfg().done;
+// cardio e desportos escolhidos (null = usar o catálogo habitual)
+function personalChoice(groupKey) {
+  if (!personalized()) return null;
+  const p = planCfg();
+  if (groupKey === 'cardio' && p.cardio.length) return p.cardio;
+  if (groupKey === 'desporto' && p.sports.length) return p.sports;
+  return null;
+}
+
+// separadores do Treino que a pessoa escolheu (ou todos)
+function visibleTabs() {
+  if (!personalized() || state.allGroups) return TABS;
+  const p = planCfg();
+  const tabs = [];
+  for (const t of TABS) {
+    if (t.children) {
+      const kids = t.children.filter((k) => p.areas.includes(k));
+      if (kids.length) tabs.push({ ...t, children: kids });
+    } else if (t.key === 'cardio') { if (p.cardio.length) tabs.push(t); }
+    else if (t.key === 'desporto') { if (p.sports.length) tabs.push(t); }
+    else if (p.areas.includes(t.key)) tabs.push(t);
+  }
+  return tabs.length ? tabs : TABS;
+}
+function ensureGroupVisible() {
+  const tabs = visibleTabs();
+  const ok = tabs.some((t) => t.key === state.group || (t.children || []).includes(state.group));
+  if (!ok) { const t = tabs[0]; state.group = t.children ? t.children[0] : t.key; }
+}
+
+// último dia em que cada músculo foi treinado → sugestão para hoje
+function suggestToday() {
+  if (isGaby()) return null;
+  const p = planCfg();
+  const keys = p.done && p.areas.length ? p.areas : ['pernas', 'gluteo', 'costas', 'peito', 'abs'];
+  const last = new Map();
+  for (const l of state.data.logs) {
+    const g = groupOf(l.exercise);
+    if (!last.has(g) || l.date > last.get(g)) last.set(g, l.date);
+  }
+  let best = null;
+  for (const k of keys) {
+    const d = last.get(k) || '';
+    if (!best || d < best.d) best = { key: k, d };
+  }
+  if (!best) return null;
+  const since = best.d ? diffDays(today(), best.d) : null;
+  return { key: best.key, label: MUSCLE_LABEL[best.key] || groupLabel(best.key), since };
+}
+
+function startWelcome(mode = 'edit') {
+  const pages = mode === 'objective' ? OBJECTIVE_PAGES : mode === 'first' ? WELCOME_PAGES : EDIT_PAGES;
+  openWelcome({
+    profile: profileOf(), name: displayName(), pages, mode,
+    onSave: async ({ objective, plan }) => {
+      const data = mode === 'objective' ? { ...profileOf(), objective } : { ...profileOf(), objective, plan };
+      try { await api.setProfile(uid(), state.pin, data); } catch (e) { throw new Error(errorMessage(e.code)); }
+      state.data.profile = data;
+    },
+    onFinish: (result) => {
+      if (result !== 'saved') return;
+      state.allGroups = false;
+      state.openExercise = null;
+      state.group = 'pernas';
+      ensureGroupVisible();
+      if (mode === 'first') state.page = 'inicio';
+      render(true);
+      window.scrollTo(0, 0);
+      toast(mode === 'objective' ? 'Objetivo atualizado. O teu treino já mudou!' : 'Plano guardado. Bom treino!');
+    }
+  });
+}
+
 // ---------- Perfil ----------
 const profileOf = () => state.data.profile || {};
 const displayName = () => profileOf().first_name || state.user.name;
-// Objetivo escolhido pela pessoa no perfil; se não escolheu, o da conta. Define as sugestões de alimentação e as mensagens.
-// O plano de treino segue sempre a conta (isGaby), por isso mudar de objetivo não muda o treino.
+// Objetivo escolhido pela pessoa no perfil; se não escolheu, o da conta. Define as sugestões de alimentação, as mensagens
+// e a forma de treinar (repetições, descanso e cardio). Os músculos e o cardio vêm das escolhas das boas-vindas.
 const focusOf = () => { const o = profileOf().objective; return o && FOCUS[o] ? o : state.user.focus; };
 
 function paintHeader() {
@@ -965,45 +1219,63 @@ function pregnancyPreview(lmp) {
   return `<b>${p.weeks} semanas${p.extraDays ? ` e ${p.extraDays} dia${p.extraDays > 1 ? 's' : ''}` : ''}</b> · ${p.tri.label}<br>Data prevista do parto: <b>${fmtDate(p.due)}</b>`;
 }
 
-const OBJECTIVES = {
-  hipertrofia: ['Hipertrofia (ganhar massa muscular)', 'O foco é aumentar o músculo, em especial glúteos e pernas.', 'Treino de força com progressão de cargas, séries pesadas e descanso entre elas.', 'Proteína em todas as refeições e calorias suficientes para recuperar e crescer.'],
-  definicao: ['Perda de gordura + hipertrofia', 'O foco é perder gordura mantendo (ou ganhando) músculo.', 'Treino de força com cardio a seguir, para gastar mais energia sem perder massa muscular.', 'Ligeiro défice calórico, proteína alta e boa hidratação.'],
-  emagrecimento: ['Emagrecer com saúde', 'O foco é perder peso de forma gradual e sustentável.', 'Treino regular, com força e cardio, a um ritmo que consigas manter.', 'Refeições regulares, proteína e legumes, sem dietas extremas.'],
-  saude: ['Saúde e bem-estar', 'O foco é sentires-te bem, com mais energia e força no dia a dia.', 'Treino equilibrado, com força, mobilidade e cardio leve.', 'Alimentação variada e regular, com bastante água.']
-};
-
-function objectiveCardHtml() {
-  const cur = focusOf();
-  const keys = ['hipertrofia', 'definicao', 'emagrecimento', 'saude'];
-  const o = OBJECTIVES[cur] || OBJECTIVES.saude;
-  return `<div class="card" id="objective-card">
-      <h2>${icon('target', 18)} O meu objetivo</h2>
-      <p class="diet-note">Escolhe o que mais combina contigo. Podes mudar quando quiseres.</p>
-      <div class="obj-list" role="radiogroup" aria-label="O meu objetivo">
-        ${keys.map((k) => `<button type="button" class="obj-opt${k === cur ? ' on' : ''}" data-action="set-objective" data-obj="${k}" role="radio" aria-checked="${k === cur}">
-          <span class="obj-dot" aria-hidden="true">${k === cur ? icon('check', 14) : ''}</span>
-          <span class="obj-txt"><b>${esc(OBJECTIVES[k][0])}</b><small>${esc(OBJECTIVES[k][1])}</small></span></button>`).join('')}
+function perfilHeroHtml() {
+  const p = profileOf();
+  const full = [p.first_name || state.user.name, p.last_name].filter(Boolean).join(' ');
+  const age = ageOf(p.birth, today());
+  const o = OBJECTIVES[focusOf()] || OBJECTIVES.saude;
+  return `<div class="card perfil-hero tilt">
+      <div class="ph-glow" aria-hidden="true"></div>
+      <div class="avatar big ${state.user.tone}" aria-hidden="true">${esc(displayName()[0].toUpperCase())}</div>
+      <div class="ph-text">
+        <h2>${esc(full)}</h2>
+        <div class="ph-meta">${age !== null ? `${age} anos · ` : ''}@${esc(state.user.id)}</div>
+        <span class="goal-chip">${icon(o[4], 14)}${esc(o[0])}</span>
       </div>
-      <div class="cy-block"><div class="dd-group-title">Treino</div><p>${esc(o[2])}</p></div>
-      <div class="cy-block"><div class="dd-group-title">Alimentação</div><p>${esc(o[3])}</p></div>
-      <p class="footnote">O objetivo ajusta as sugestões de alimentação e as mensagens. O plano de treino base é o mesmo para todas.</p>
-    </div>
-
-    `;
+    </div>`;
 }
 
-async function setObjective(btn) {
-  const obj = btn.dataset.obj;
-  if (!FOCUS[obj] || obj === focusOf()) return;
-  const data = { ...profileOf(), objective: obj };
-  try {
-    await api.setProfile(uid(), state.pin, data);
-    state.data.profile = data;
-    render();
-    pop(1.1);
-    toast('Objetivo atualizado.');
-  } catch (e) { toast(errorMessage(e.code)); }
+function planCardHtml() {
+  const p = planCfg();
+  const o = OBJECTIVES[focusOf()] || OBJECTIVES.saude;
+  const chips = (arr, fn, ic) => arr.length ? arr.map((x) => `<span class="plan-chip">${icon(ic, 13)}${esc(fn(x))}</span>`).join('') : '<span class="plan-none">Sem escolhas</span>';
+  if (isGaby()) {
+    return `<div class="card" id="plan-card">
+      <h2>${icon('target', 18)} O meu objetivo</h2>
+      <p class="diet-note">O teu treino é o plano de 12 semanas definido para ti. O objetivo ajusta as sugestões de alimentação e as mensagens.</p>
+      <div class="cy-block"><div class="dd-group-title">${esc(o[0])}</div><p>${esc(o[1])}</p></div>
+      <div class="plan-actions"><button class="save-btn alt" data-action="edit-objective">${icon('target', 16)} Alterar objetivo</button></div>
+    </div>`;
+  }
+  return `<div class="card" id="plan-card">
+      <h2>${icon('sparkles', 18)} O meu plano</h2>
+      <p class="diet-note">${p.done ? 'Estas são as escolhas que deram forma ao teu treino. Podes mudá-las quando quiseres.' : 'Ainda não personalizaste o teu plano. Responde a algumas perguntas e o treino passa a mostrar só o que te interessa.'}</p>
+      ${p.done ? `
+      <div class="plan-block"><div class="dd-group-title">Objetivo</div><div class="plan-chips"><span class="plan-chip strong">${icon(o[4], 13)}${esc(o[0])}</span></div></div>
+      <div class="plan-block"><div class="dd-group-title">Músculos a trabalhar</div><div class="plan-chips">${chips(p.areas, (k) => MUSCLE_LABEL[k], 'dumbbell')}</div></div>
+      <div class="plan-block"><div class="dd-group-title">Cardio</div><div class="plan-chips">${chips(p.cardio, cardioLabel, 'activity')}</div></div>
+      <div class="plan-block"><div class="dd-group-title">Desportos</div><div class="plan-chips">${chips(p.sports, sportLabel, 'trend')}</div></div>
+      <div class="plan-block"><div class="dd-group-title">Frequência</div><div class="plan-chips">${p.days ? `<span class="plan-chip">${icon('calendar', 13)}${p.days} dias por semana</span>` : '<span class="plan-none">Sem escolha</span>'}</div></div>` : ''}
+      <div class="cy-block"><div class="dd-group-title">Como o objetivo muda o treino</div><p>${esc(o[2])}</p></div>
+      <div class="plan-actions">
+        <button class="save-btn" data-action="${p.done ? 'edit-plan' : 'start-plan'}">${icon('sparkles', 16)} ${p.done ? 'Editar escolhas' : 'Personalizar o meu plano'}</button>
+        <button class="save-btn alt" data-action="edit-objective">${icon('target', 16)} Alterar objetivo</button>
+      </div>
+    </div>`;
 }
+
+function subTabsHtml(page, items) {
+  const cur = state.sub[page];
+  const idx = Math.max(0, items.findIndex((i) => i[0] === cur));
+  return `<div class="seg" role="tablist" style="--cols:${items.length};--i:${idx}">
+      <span class="seg-pill" aria-hidden="true"></span>
+      ${items.map(([k, label, ic]) => `<button type="button" role="tab" class="seg-btn${k === cur ? ' on' : ''}" aria-selected="${k === cur}" data-action="sub" data-page="${page}" data-sub="${k}">${icon(ic, 16)}${label}</button>`).join('')}
+    </div>`;
+}
+const SUBS = {
+  progresso: [['resumo', 'Resumo', 'trend'], ['medicoes', 'Medições', 'activity']],
+  perfil: [['dados', 'O meu perfil', 'user'], ['medicoes', 'Medições', 'activity']]
+};
 
 function renderPerfil() {
   const p = profileOf();
@@ -1012,8 +1284,10 @@ function renderPerfil() {
   const age = ageOf(p.birth, today());
   const sel = (v, cur) => (v === cur ? ' selected' : '');
   pageEl.innerHTML = `
+    ${perfilHeroHtml()}
+    ${planCardHtml()}
     <div class="card" id="profile-form">
-      <h2>${icon('user', 18)} O meu perfil</h2>
+      <h2>${icon('user', 18)} Os meus dados</h2>
       <div class="form-row">
         <div class="field"><label for="pf-first">Nome próprio</label><input type="text" id="pf-first" maxlength="30" autocomplete="given-name" value="${esc(p.first_name || '')}"></div>
         <div class="field"><label for="pf-last">Apelido</label><input type="text" id="pf-last" maxlength="30" autocomplete="family-name" value="${esc(p.last_name || '')}"></div>
@@ -1027,7 +1301,7 @@ function renderPerfil() {
       ${age !== null ? `<p class="diet-note" style="margin-top:-2px">Tens <b>${age} anos</b>.</p>` : ''}
     </div>
 
-    ${objectiveCardHtml()}<div class="card" id="cycle-form">
+    <div class="card" id="cycle-form">
       <h2>${icon('droplet', 18)} Ciclo menstrual</h2>
       <p class="diet-note">Com estes dados, a aba Progresso mostra em que fase do ciclo estás e o que podes esperar em cada dia.</p>
       <div class="form-row">
@@ -1471,9 +1745,9 @@ async function toggleDay(iso) {
 
 // ---------- navegação e eventos ----------
 const PAGES = [
+  ['inicio', 'Início', 'home'],
   ['treino', 'Treino', 'dumbbell'],
   ['alimentacao', 'Alimentação', 'leaf'],
-  ['medicao', 'Medições', 'activity'],
   ['progresso', 'Progresso', 'trend'],
   ['perfil', 'Perfil', 'user']
 ];
@@ -1493,14 +1767,19 @@ function renderNav() {
   });
 }
 
-const RENDERERS = { treino: renderTreino, medicao: renderMedicao, alimentacao: renderAlimentacao, perfil: renderPerfil, progresso: renderProgresso };
+// Medições vive dentro de Progresso e de Perfil, como segunda página de cada uma
+const RENDERERS = {
+  inicio: renderInicio, treino: renderTreino, alimentacao: renderAlimentacao,
+  progresso: () => { if (state.sub.progresso === 'medicoes') pageEl.innerHTML = medicaoHtml(); else renderProgresso(); pageEl.insertAdjacentHTML('afterbegin', subTabsHtml('progresso', SUBS.progresso)); },
+  perfil: () => { if (state.sub.perfil === 'medicoes') pageEl.innerHTML = medicaoHtml(); else renderPerfil(); pageEl.insertAdjacentHTML('afterbegin', subTabsHtml('perfil', SUBS.perfil)); }
+};
 
 function render(fresh = false) {
   renderNav();
   pageEl.classList.toggle('fresh', fresh);
   RENDERERS[state.page]();
   if (fresh) [...pageEl.children].forEach((el, i) => el.style.setProperty('--n', i));
-  if (fresh && state.page === 'progresso') celebrateGoal();
+  if (fresh && state.page === 'progresso' && state.sub.progresso === 'resumo') celebrateGoal();
 }
 
 // Chuva de confetti (uma vez por mês e por sessão) quando a meta do mês foi batida
@@ -1536,6 +1815,29 @@ function onClick(ev) {
       state.confirm = null;
       window.scrollTo({ top: 0, behavior: 'smooth' });
       break;
+    case 'go-page':
+      state.page = d.page; state.confirm = null;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      break;
+    case 'sub':
+      if (state.sub[d.page] === d.sub) return;
+      state.sub[d.page] = d.sub; state.confirm = null; state.editingMeas = null;
+      break;
+    case 'toggle-groups': state.allGroups = !state.allGroups; state.openExercise = null; ensureGroupVisible(); break;
+    case 'home-go': {
+      const sug = suggestToday();
+      if (state.restDay === today()) state.restDay = null;
+      state.page = 'treino'; state.openExercise = null;
+      if (sug) state.group = sug.key;
+      ensureGroupVisible();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      break;
+    }
+    case 'home-rest': state.restDay = today(); toast('Descanso é treino também. Até amanhã!'); break;
+    case 'home-goal': setMonthGoal(el); return;
+    case 'start-plan': startWelcome('first'); return;
+    case 'edit-plan': startWelcome('edit'); return;
+    case 'edit-objective': startWelcome('objective'); return;
     case 'group':
       state.group = d.group; state.openExercise = null; state.editingLog = null; state.confirm = null; state.addingExercise = false;
       break;
@@ -1562,7 +1864,6 @@ function onClick(ev) {
     case 'add-set': addSetRow(el); return;
     case 'save-measurement': saveMeasurement(el); return;
     case 'save-profile': saveProfile(el); return;
-    case 'set-objective': setObjective(el); return;
     case 'period-today': periodStartedToday(el); return;
     case 'cycle-day': state.cycleDay = d.date; render(); return;
     case 'edit-log':
@@ -1668,7 +1969,6 @@ function showLogin() {
 function showRegister(inviteCode = '') {
   splashEl.classList.add('pin-mode');
   const reg = { step: 1, code: inviteCode, username: '', password: '', first: '', last: '', gender: '', bd: '', bm: '', by: '', objective: '', weight: '', fat: '', muscle: '' };
-  const keys = ['hipertrofia', 'definicao', 'emagrecimento', 'saude'];
 
   const stepHtml = () => {
     if (reg.step === 1) return `
@@ -1693,13 +1993,8 @@ function showRegister(inviteCode = '') {
           <select id="rg-by" aria-label="Ano"><option value="">Ano</option>${Array.from({ length: 91 }, (_, i) => { const y = new Date().getFullYear() - 10 - i; return `<option${String(y) === reg.by ? ' selected' : ''}>${y}</option>`; }).join('')}</select>
         </div></div>`;
     return `
-      <div class="login-title">O teu objetivo</div>
-      <div class="login-sub">Passo 3 de 3 · O treino base é igual para todas</div>
-      <div class="obj-list" role="radiogroup" aria-label="O meu objetivo">
-        ${keys.map((k) => `<button type="button" class="obj-opt${k === reg.objective ? ' on' : ''}" data-obj="${k}" role="radio" aria-checked="${k === reg.objective}">
-          <span class="obj-dot" aria-hidden="true">${k === reg.objective ? icon('check', 14) : ''}</span>
-          <span class="obj-txt"><b>${esc(OBJECTIVES[k][0])}</b><small>${esc(OBJECTIVES[k][1])}</small></span></button>`).join('')}
-      </div>
+      <div class="login-title">As tuas medidas</div>
+      <div class="login-sub">Passo 3 de 3 · Opcional. A seguir fazemos-te umas perguntas para montar o teu plano</div>
       <div class="lf"><span>Medidas de hoje (opcional)</span>
         <div class="rg-meas">
           <label class="rg-m"><small>Peso (kg)</small><input id="rg-weight" inputmode="decimal" value="${esc(reg.weight)}"></label>
@@ -1730,7 +2025,6 @@ function showRegister(inviteCode = '') {
       }
     }
     if (reg.step === 3) {
-      if (!reg.objective) return 'Escolhe o objetivo que mais combina contigo.';
       const rng = [[reg.weight, 20, 400, 'peso'], [reg.fat, 1, 80, 'gordura corporal'], [reg.muscle, 5, 200, 'massa muscular']];
       for (const [val, lo, hi, nome] of rng) if (val && !(num(val) >= lo && num(val) <= hi)) return `Confirma o valor de ${nome} (entre ${lo} e ${hi}).`;
     }
@@ -1751,14 +2045,6 @@ function showRegister(inviteCode = '') {
     if (first) first.focus();
     $('rg-login').addEventListener('click', showLogin);
     if (reg.step > 1) $('rg-back').addEventListener('click', () => { read(); reg.step--; draw(); });
-    splashInner.querySelectorAll('.obj-opt').forEach((b) => b.addEventListener('click', () => {
-      reg.objective = b.dataset.obj;
-      splashInner.querySelectorAll('.obj-opt').forEach((o) => {
-        const on = o === b;
-        o.classList.toggle('on', on); o.setAttribute('aria-checked', String(on));
-        o.querySelector('.obj-dot').innerHTML = on ? icon('check', 14) : '';
-      });
-    }));
     $('reg-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       read();
@@ -1769,7 +2055,7 @@ function showRegister(inviteCode = '') {
       const btn = $('rg-next');
       btn.disabled = true;
       err.textContent = 'A criar a tua conta…';
-      const profile = { first_name: reg.first, last_name: reg.last, gender: reg.gender, birth: reg.bd ? `${reg.by}-${pad2(reg.bm)}-${pad2(reg.bd)}` : null, objective: reg.objective };
+      const profile = { first_name: reg.first, last_name: reg.last, gender: reg.gender, birth: reg.bd ? `${reg.by}-${pad2(reg.bm)}-${pad2(reg.bd)}` : null };
       const meas = {};
       if (reg.weight) meas.weight = num(reg.weight);
       if (reg.fat) meas.body_fat = num(reg.fat);
@@ -1779,7 +2065,7 @@ function showRegister(inviteCode = '') {
         try { localStorage.setItem(LAST_NUMBER_KEY, reg.username); } catch { /* ignora */ }
         history.replaceState(null, '', location.pathname);
         await startSession(out.profile, reg.password);
-        setTimeout(() => toast('Conta criada! Já podes começar a treinar.'), 700);
+        setTimeout(() => startWelcome('first'), 650); // páginas de boas-vindas
       } catch (ex) {
         err.textContent = ex.code === 'server'
           ? 'Não foi possível criar a conta. Falta correr o ficheiro supabase/atualizar-conta-propria.sql no Supabase.'
@@ -1801,7 +2087,7 @@ async function startSession(profile, pin) {
   state.pin = pin;
   applyData(out);
   Object.assign(state, {
-    page: 'treino', group: 'pernas', week: currentWeek(), session: pickDefaultSession(currentWeek()), metric: 'weight', openExercise: null, showMeanings: false,
+    page: 'inicio', sub: { progresso: 'resumo', perfil: 'dados' }, allGroups: false, restDay: null, group: 'pernas', week: currentWeek(), session: pickDefaultSession(currentWeek()), metric: 'weight', openExercise: null, showMeanings: false,
     calMonth: startOfMonth(new Date()), selectedDay: null, editingLog: null, editingMeas: null, confirm: null,
     addingExercise: false, editingGoal: false, cycleDay: null
   });
