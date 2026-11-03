@@ -34,11 +34,12 @@ const state = {
   selectedDay: null,
   editingLog: null,   // id do registo a corrigir
   editingMeas: null,  // data da medição a corrigir
-  confirm: null,      // 'log:<id>' | 'meas:<data>' | 'cex:<id>' à espera de confirmação para apagar
+  confirm: null,      // 'log:<id>' | 'meas:<data>' | 'sleep:<data>' | 'cex:<id>' à espera de confirmação para apagar
   addingExercise: false,
   editingGoal: false,
   cycleDay: null,
-  data: { measurements: [], logs: [], gymDays: new Set(), profile: {}, custom: [], goals: new Map() }
+  sleepDate: null,
+  data: { measurements: [], logs: [], gymDays: new Set(), profile: {}, sleep: [], moods: [], meals: [], custom: [], goals: new Map() }
 };
 
 // exercícios do plano, por nome
@@ -94,6 +95,9 @@ function applyData(out) {
   state.data.logs = out.logs;
   state.data.gymDays = new Set(out.gym_days);
   state.data.profile = out.profile || {};
+  state.data.sleep = out.sleep || [];
+  state.data.moods = out.moods || [];
+  state.data.meals = out.meals || [];
   state.data.custom = out.custom_exercises || [];
   state.data.goals = new Map((out.goals || []).map((g) => [g.month, Number(g.days)]));
 }
@@ -674,6 +678,7 @@ async function confirmDelete(kind, id) {
   try {
     if (kind === 'log') await api.deleteLog(uid(), state.pin, Number(id));
     else if (kind === 'meas') await api.deleteMeasurement(uid(), state.pin, id);
+    else if (kind === 'sleep') await api.deleteSleep(uid(), state.pin, id);
     else if (kind === 'cex') await api.deleteCustomExercise(uid(), state.pin, Number(id));
     else if (kind === 'hide') {
       const data = { ...profileOf(), hidden_ex: [...new Set([...hiddenEx(), id])].slice(-80) };
@@ -949,6 +954,8 @@ function renderAlimentacao() {
       <div class="food-chips">${FOOD_LIMIT.items.map((it) => `<span class="food-chip">${esc(it)}</span>`).join('')}</div></details>`;
 
   pageEl.innerHTML = `
+    ${mealCheckinHtml()}
+    ${sleepSectionHtml()}
     <div class="card hydration tilt">
       <h2>${icon('droplet', 18)} Hidratação</h2>
       ${waterHtml}
@@ -972,6 +979,191 @@ function renderAlimentacao() {
         </div>`).join('')}
       <p class="footnote">Valores de referência gerais, não substituem o acompanhamento de um nutricionista.</p>
     </div>`;
+}
+
+// ---------- Comi bem hoje? (check-in diário) ----------
+const MEAL_LABELS = ['Nem por isso', 'Mais ou menos', 'Comi bem'];
+
+function todayMeal() { return state.data.meals.find((m) => m.day === today()); }
+
+function mealCheckinHtml() {
+  const existing = todayMeal();
+  return `<div class="card meal-checkin">
+    <h2>${icon('leaf', 18)} Comi bem hoje?</h2>
+    <div class="meal-q" role="radiogroup" aria-label="Comi bem hoje?">
+      ${MEAL_LABELS.map((lab, i) => `<button type="button" class="meal-btn${existing && Number(existing.ate) === i ? ' on' : ''}" data-action="save-meal" data-ate="${i}" role="radio" aria-checked="${!!existing && Number(existing.ate) === i}">${esc(lab)}</button>`).join('')}
+    </div>
+    <p class="diet-note">${existing ? 'Já respondeste hoje — podes mudar quando quiseres.' : 'A Butty também se alimenta de ti dizeres a verdade.'}</p>
+  </div>`;
+}
+
+async function saveMeal(btn) {
+  const ate = Number(btn.dataset.ate);
+  const [cx, cy] = centerOf(btn);
+  btn.closest('.meal-q').querySelectorAll('.meal-btn').forEach((b) => b.disabled = true);
+  try {
+    await api.setMeal(uid(), state.pin, { day: today(), ate });
+    await refreshData();
+    render();
+    burst(cx, cy, 20);
+    popSuccess();
+  } catch (e) {
+    toast(errorMessage(e.code));
+    render();
+  }
+}
+
+// ---------- Sono ----------
+const SLEEP_LABELS = ['Péssima', 'Fraca', 'Razoável', 'Boa', 'Ótima'];
+const fmtHours = (h) => `${ptNum(h, 2)} h`;
+
+function lastDays(n) {
+  return Array.from({ length: n }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (n - 1 - i)); return isoDate(d); });
+}
+
+// horas dormidas a partir da hora de deitar e da hora de acordar (passa a meia-noite se for preciso)
+function sleepHours(bed, wake) {
+  if (!/^\d{2}:\d{2}$/.test(bed || '') || !/^\d{2}:\d{2}$/.test(wake || '')) return null;
+  const mins = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
+  let d = mins(wake) - mins(bed);
+  if (d < 0) d += 1440;
+  return Math.round((d / 60) * 100) / 100;
+}
+const fmtHM = (h) => { const m = Math.round(h * 60); return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min`; };
+
+function sleepCalcText(bed, wake, existing) {
+  const h = sleepHours(bed, wake);
+  if (h === null) return existing && !existing.bed_time ? `Registo antigo: ${fmtHours(existing.hours)}. Preenche as horas para o atualizar.` : 'Diz-me a que horas foste dormir e a que horas acordaste, e eu faço a conta.';
+  if (h <= 0 || h > 16) return 'Confirma as horas: o sono tem de ter entre 0,5 e 16 horas.';
+  return `${icon('moon', 15)}<span>Dormiste <b>${fmtHM(h)}</b> (${fmtHours(h)})</span>`;
+}
+
+function sleepChart() {
+  const map = new Map(state.data.sleep.map((s) => [s.day, s]));
+  const days = lastDays(14);
+  const w = 500, h = 180, padX = 18, padTop = 14, padBottom = 30, max = 12;
+  const H = h - padTop - padBottom, slot = (w - padX * 2) / days.length;
+  const y = (hrs) => h - padBottom - (hrs / max) * H;
+  const bars = days.map((d, i) => {
+    const s = map.get(d);
+    const x = padX + i * slot + 3;
+    const label = i % 2 === 1 || i === days.length - 1 ? `<text class="chart-axis" x="${x + (slot - 6) / 2}" y="${h - 8}" text-anchor="middle">${fmtShort(d)}</text>` : '';
+    if (!s) return `<rect class="sbar empty" x="${x}" y="${h - padBottom - 3}" width="${slot - 6}" height="3" rx="1.5"/>${label}`;
+    return `<rect class="sbar q${s.quality}" x="${x}" y="${y(Number(s.hours))}" width="${slot - 6}" height="${(Number(s.hours) / max) * H}" rx="5"><title>${fmtDate(d)}: ${fmtHours(s.hours)} · ${SLEEP_LABELS[s.quality - 1]}</title></rect>${label}`;
+  }).join('');
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto" role="img" aria-label="Horas de sono nos últimos 14 dias">
+    <rect x="${padX}" y="${y(9)}" width="${w - padX * 2}" height="${y(7) - y(9)}" rx="6" fill="#C6E8DC" opacity=".55"/>
+    <text class="chart-axis" x="${w - padX}" y="${y(9) - 4}" text-anchor="end">ideal: 7–9 h</text>
+    ${bars}
+  </svg>`;
+}
+
+function sleepSummary() {
+  const set = new Set(lastDays(7));
+  const week = state.data.sleep.filter((s) => set.has(s.day));
+  if (!week.length) return { html: '<p class="diet-note">Regista o teu primeiro sono e começamos a conta.</p>' };
+  const avgH = week.reduce((a, s) => a + Number(s.hours), 0) / week.length;
+  const avgQ = week.reduce((a, s) => a + Number(s.quality), 0) / week.length;
+  const msg = avgH >= 7
+    ? 'Sono em modo premium: a Butty e o músculo agradecem.'
+    : avgH >= 6
+      ? 'Quase lá! Mais uns 30 minutos de cama e fazes upgrade para o sono premium.'
+      : 'O teu corpo anda a pedir mais cama. Tenta deitar-te mais cedo e vê a diferença no treino.';
+  return {
+    html: `<div class="sleep-stats">
+        <div><span>Média da semana</span><b>${fmtHours(avgH)}</b></div>
+        <div><span>Qualidade média</span><b>${SLEEP_LABELS[Math.min(4, Math.max(0, Math.round(avgQ) - 1))]}</b></div>
+        <div><span>Noites registadas</span><b>${week.length}/7</b></div>
+      </div><p class="diet-note">${msg}</p>`
+  };
+}
+
+function sleepRowHtml(s) {
+  const key = `sleep:${s.day}`;
+  if (state.confirm === key) {
+    return `<div class="hist-row confirm"><span>Apagar o sono de ${fmtDate(s.day)}?</span>
+      <span class="le-actions"><button class="mini danger" data-action="del-yes" data-kind="sleep" data-id="${s.day}">Sim</button><button class="mini" data-action="del-no">Não</button></span></div>`;
+  }
+  const moons = Array.from({ length: 5 }, (_, i) => `<span class="moon${i < s.quality ? ' on' : ''}">${icon('moon', 13)}</span>`).join('');
+  return `<div class="hist-row"><span>${fmtDate(s.day)}${s.bed_time ? `<small class="sl-times">${esc(s.bed_time)} → ${esc(s.wake_time)}</small>` : ''}</span><b>${fmtHours(s.hours)}</b><span class="moons" title="${SLEEP_LABELS[s.quality - 1]}">${moons}</span>
+    <span class="le-actions">
+      <button class="mini-ico" data-action="edit-sleep" data-day="${s.day}" aria-label="Corrigir sono">${icon('pencil', 14)}</button>
+      <button class="mini-ico" data-action="del-sleep" data-day="${s.day}" aria-label="Apagar sono">${icon('trash', 14)}</button>
+    </span></div>`;
+}
+
+function sleepSectionHtml() {
+  if (!state.sleepDate) state.sleepDate = today();
+  const day = state.sleepDate;
+  const existing = state.data.sleep.find((s) => s.day === day);
+  const q = existing ? existing.quality : 0;
+  const sum = sleepSummary();
+
+  return `
+    <div class="card" id="sleep-form">
+      <h2>${icon('moon', 18)} ${existing ? 'Corrigir o sono' : 'Como dormiste?'}</h2>
+      <div class="form-row">
+        <div class="field"><label for="sl-date">Noite que terminou no dia</label><input type="date" id="sl-date" max="${today()}" value="${day}"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label for="sl-bed">Fui dormir às</label><input type="time" id="sl-bed" value="${existing?.bed_time ? esc(existing.bed_time) : ''}"></div>
+        <div class="field"><label for="sl-wake">Acordei às</label><input type="time" id="sl-wake" value="${existing?.wake_time ? esc(existing.wake_time) : ''}"></div>
+      </div>
+      <div class="sleep-calc" id="sl-calc">${sleepCalcText(existing?.bed_time, existing?.wake_time, existing)}</div>
+      <div class="sleep-q" id="sl-q" data-q="${q}" role="radiogroup" aria-label="Qualidade do sono">
+        ${SLEEP_LABELS.map((lab, i) => `<button type="button" class="moon-btn${i < q ? ' on' : ''}" data-action="sleep-q" data-q="${i + 1}" role="radio" aria-checked="${i + 1 === q}" aria-label="${lab}">${icon('moon', 26)}<span>${lab}</span></button>`).join('')}
+      </div>
+      <button class="save-btn" data-action="save-sleep">${existing ? 'Atualizar sono' : 'Guardar sono'}</button>
+      <div class="saved-flash" id="sl-flash"></div>
+    </div>
+
+    <div class="card">
+      <h2>O sono esta semana</h2>
+      ${sum.html}
+      <div class="chart-wrap">${sleepChart()}</div>
+      <p class="footnote">Para adultos, o recomendado são 7 a 9 horas por noite. Dormir bem ajuda a recuperar o músculo, a manter a energia nos treinos — e deixa a Butty feliz.</p>
+    </div>
+
+    <div class="card">
+      <h2>Histórico do sono</h2>
+      ${state.data.sleep.length ? `<div class="hist-list tall">${state.data.sleep.slice(0, 21).map(sleepRowHtml).join('')}</div>` : '<p class="diet-note">Ainda não registaste nenhuma noite.</p>'}
+    </div>`;
+}
+
+async function saveSleep(btn) {
+  const day = $('sl-date').value;
+  const bed = $('sl-bed').value, wake = $('sl-wake').value;
+  const hours = sleepHours(bed, wake) ?? NaN;
+  const quality = Number($('sl-q').dataset.q);
+  const flash = $('sl-flash');
+  if (!day) { flash.textContent = 'Escolhe o dia.'; return; }
+  if (day > today()) { flash.textContent = errorMessage('future_date'); return; }
+  if (!(hours > 0 && hours <= 16)) { flash.textContent = 'Diz a que horas foste dormir e a que horas acordaste (o sono tem de ter entre 0,5 e 16 horas).'; return; }
+  if (!(quality >= 1 && quality <= 5)) { flash.textContent = 'Escolhe a qualidade do sono.'; return; }
+  const wasExisting = state.data.sleep.some((s) => s.day === day);
+  btn.disabled = true;
+  const [cx, cy] = centerOf(btn);
+  try {
+    await api.setSleep(uid(), state.pin, { day, hours, quality, bed_time: bed, wake_time: wake });
+    await refreshData();
+    render();
+    flashOk($('sl-flash'), wasExisting ? 'Sono atualizado!' : 'Sono guardado!');
+    burst(cx, cy, 28);
+    popSuccess();
+  } catch (e) {
+    btn.disabled = false;
+    toast(errorMessage(e.code));
+  }
+}
+
+function pickSleepQuality(btn) {
+  const q = Number(btn.dataset.q);
+  const box = $('sl-q');
+  box.dataset.q = q;
+  box.querySelectorAll('.moon-btn').forEach((b, i) => {
+    b.classList.toggle('on', i < q);
+    b.setAttribute('aria-checked', String(i + 1 === q));
+  });
 }
 
 // ---------- Início ----------
@@ -1007,9 +1199,89 @@ function weekStripHtml() {
   }).join('')}</div>`;
 }
 
+// ---------- Butty ----------
+const BUTTY_IMG = (name) => `icons/butty/${name}.webp`;
+
+function buttyPillars() {
+  const t = today();
+  const exerciseOk = trainedToday();
+  const sleepEntry = state.data.sleep.find((s) => s.day === t);
+  const sleepOk = !!sleepEntry && Number(sleepEntry.hours) >= 7;
+  const mealEntry = todayMeal();
+  const mealOk = !!mealEntry && Number(mealEntry.ate) >= 1;
+  return { exerciseOk, sleepOk, mealOk, sleepEntry, mealEntry };
+}
+
+const BUTTY_LEVELS = [
+  { img: 'face-sleepy', title: 'A Butty está cansadinha...', text: 'Ainda não cuidaste de nenhuma destas coisas hoje. Começa por uma — a Butty já fica mais contente.' },
+  { img: 'face-shock', title: 'A Butty precisa de ti', text: 'Falta cuidar de mais algumas coisas hoje para ela ficar bem disposta.' },
+  { img: 'face-love', title: 'A Butty está bem disposta', text: 'Estás a ir bem — falta só mais um bocadinho para ela ficar radiante.' },
+  { img: 'face-laugh', title: 'A Butty está radiante!', text: 'Exercício, sono e alimentação em dia. A Butty não podia estar mais feliz contigo.' }
+];
+
+function buttyHtml() {
+  const { exerciseOk, sleepOk, mealOk, sleepEntry, mealEntry } = buttyPillars();
+  const score = [exerciseOk, sleepOk, mealOk].filter(Boolean).length;
+  const lvl = BUTTY_LEVELS[score];
+  const rows = [
+    { ok: exerciseOk, label: 'Exercício hoje', page: 'treino', note: exerciseOk ? 'Feito' : 'Ainda não' },
+    { ok: sleepOk, label: 'Dormir bem (7h+)', page: 'alimentacao', note: sleepEntry ? fmtHours(sleepEntry.hours) : 'Por registar' },
+    { ok: mealOk, label: 'Comer bem', page: 'alimentacao', note: mealEntry ? MEAL_LABELS[mealEntry.ate] : 'Por registar' }
+  ];
+  return `<div class="card butty-card tilt">
+    <div class="butty-head">
+      <img class="butty-img" src="${BUTTY_IMG(lvl.img)}" alt="Butty, a mascote">
+      <div class="butty-text"><h2>${esc(lvl.title)}</h2><p>${esc(lvl.text)}</p></div>
+    </div>
+    <div class="butty-rows">
+      ${rows.map((r) => `<button type="button" class="butty-row${r.ok ? ' on' : ''}" data-action="go-page" data-page="${r.page}">
+        <span class="br-ico">${icon(r.ok ? 'check' : 'minus', 14)}</span><span class="br-label">${esc(r.label)}</span><span class="br-note">${esc(r.note)}</span>
+      </button>`).join('')}
+    </div>
+  </div>`;
+}
+
+// ---------- Como te sentiste hoje? ----------
+const MOOD_FACES = [
+  { img: 'face-sleepy', label: 'Cansada' },
+  { img: 'face-shock', label: 'Em baixo' },
+  { img: 'face-joy', label: 'Mais ou menos' },
+  { img: 'face-love', label: 'Bem' },
+  { img: 'face-laugh', label: 'Ótima' }
+];
+
+function todayMood() { return state.data.moods.find((m) => m.day === today()); }
+
+function moodCheckinHtml() {
+  const existing = todayMood();
+  return `<div class="card mood-card">
+    <h2>Como te sentiste hoje?</h2>
+    <div class="mood-row" role="radiogroup" aria-label="Como te sentiste hoje?">
+      ${MOOD_FACES.map((m, i) => `<button type="button" class="mood-btn${existing && Number(existing.mood) === i + 1 ? ' on' : ''}" data-action="save-mood" data-mood="${i + 1}" role="radio" aria-checked="${!!existing && Number(existing.mood) === i + 1}" aria-label="${esc(m.label)}">
+        <img src="${BUTTY_IMG(m.img)}" alt=""><span>${esc(m.label)}</span></button>`).join('')}
+    </div>
+  </div>`;
+}
+
+async function saveMood(btn) {
+  const mood = Number(btn.dataset.mood);
+  const [cx, cy] = centerOf(btn);
+  btn.closest('.mood-row').querySelectorAll('.mood-btn').forEach((b) => b.disabled = true);
+  try {
+    await api.setMood(uid(), state.pin, { day: today(), mood });
+    await refreshData();
+    render();
+    burst(cx, cy, 20);
+    popSuccess();
+  } catch (e) {
+    toast(errorMessage(e.code));
+    render();
+  }
+}
+
 const TILES = [
   ['treino', 'Treino', 'dumbbell', 'Exercícios, cargas e descanso', 'rose'],
-  ['alimentacao', 'Alimentação', 'leaf', 'Refeições, proteína e água', 'mint'],
+  ['alimentacao', 'Saúde', 'leaf', 'Sono, alimentação e água', 'mint'],
   ['progresso', 'Progresso', 'trend', 'Calendário, metas e medições', 'lilac'],
   ['perfil', 'Perfil', 'user', 'O teu plano e os teus dados', 'peach']
 ];
@@ -1074,6 +1346,9 @@ function renderInicio() {
       <h2 class="hh-title">${greetingOf(now.getHours())}, ${esc(displayName())}!</h2>
       <p class="hh-quote">“${esc(quoteOf(t))}”</p>
     </div>
+
+    ${buttyHtml()}
+    ${moodCheckinHtml()}
 
     ${todayCard}
 
@@ -1771,9 +2046,9 @@ async function toggleDay(iso) {
 const PAGES = [
   ['inicio', 'Início', 'home'],
   ['treino', 'Treino', 'dumbbell'],
-  ['alimentacao', 'Alimentação', 'leaf'],
+  ['alimentacao', 'Saúde', 'leaf'],
   ['progresso', 'Progresso', 'trend'],
-  ['perfil', 'Perfil', 'user']
+  ['perfil', 'Perfil', 'deer']
 ];
 
 function renderNav() {
@@ -1887,6 +2162,12 @@ function onClick(ev) {
     case 'save-log': saveLog(el); return;
     case 'add-set': addSetRow(el); return;
     case 'save-measurement': saveMeasurement(el); return;
+    case 'save-sleep': saveSleep(el); return;
+    case 'sleep-q': pickSleepQuality(el); return;
+    case 'edit-sleep': state.sleepDate = d.day; state.confirm = null; render(); scrollToAndFocus('#sleep-form'); return;
+    case 'del-sleep': state.confirm = `sleep:${d.day}`; render(); return;
+    case 'save-meal': saveMeal(el); return;
+    case 'save-mood': saveMood(el); return;
     case 'save-profile': saveProfile(el); return;
     case 'period-today': periodStartedToday(el); return;
     case 'cycle-day': state.cycleDay = d.date; render(); return;
@@ -1918,6 +2199,10 @@ pageEl.addEventListener('submit', (e) => {
 
 pageEl.addEventListener('input', (e) => {
   if (e.target.id === 'pf-lmp') { $('pf-preg-calc').innerHTML = pregnancyPreview(e.target.value); return; }
+  if (e.target.id === 'sl-bed' || e.target.id === 'sl-wake') {
+    $('sl-calc').innerHTML = sleepCalcText($('sl-bed').value, $('sl-wake').value, null);
+    return;
+  }
   if (e.target.id !== 'm-weight' || !isGaby()) return;
   const bmi = $('m-bmi');
   const w = Number(e.target.value);
@@ -1928,6 +2213,7 @@ pageEl.addEventListener('change', (e) => {
   if (e.target.id === 'pf-status') {
     ['cycle', 'pregnant', 'none'].forEach((k) => { $(`cy-${k}`).hidden = k !== e.target.value; });
   }
+  if (e.target.id === 'sl-date') { state.sleepDate = e.target.value || today(); state.confirm = null; render(); }
   if (e.target.id === 'cx-kind') $('cx-dist-row').hidden = e.target.value !== 'time';
 });
 
@@ -2114,7 +2400,7 @@ async function startSession(profile, pin) {
   Object.assign(state, {
     page: 'inicio', sub: { progresso: 'resumo', perfil: 'dados' }, allGroups: false, restDay: null, group: 'pernas', week: currentWeek(), session: pickDefaultSession(currentWeek()), metric: 'weight', openExercise: null, showMeanings: false,
     calMonth: startOfMonth(new Date()), selectedDay: null, editingLog: null, editingMeas: null, confirm: null,
-    addingExercise: false, editingGoal: false, cycleDay: null
+    addingExercise: false, editingGoal: false, cycleDay: null, sleepDate: null
   });
   try { localStorage.setItem(SESSION_KEY, JSON.stringify({ profile, pin })); } catch { /* ignora */ }
 
