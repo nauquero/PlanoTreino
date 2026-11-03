@@ -36,7 +36,7 @@ const PATHS = {
   book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
   'volume-on': '<path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/>',
   'volume-off': '<path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="m22 9-6 6M16 9l6 6"/>',
-  deer: '<circle cx="12" cy="14.5" r="5.7"/><path d="M7.3 9.5c-1.3-2.6-1-5.8 0-6.3 1-.5 2.6 1 3.4 3.8"/><path d="M16.7 9.5c1.3-2.6 1-5.8 0-6.3-1-.5-2.6 1-3.4 3.8"/><path d="M9.6 14.5h.01M14.4 14.5h.01"/><path d="M11 17.3h2"/>'
+  deer: '<circle cx="12" cy="15.3" r="5.3"/><path d="M9.3 10.8 7 4"/><path d="M7.8 7.6 5.3 6.6"/><path d="M14.7 10.8 17 4"/><path d="M16.2 7.6 18.7 6.6"/><path d="M9.8 15.3h.01M14.2 15.3h.01"/><path d="M11 17.8h2"/>'
 };
 
 export function icon(name, size = 18) {

@@ -669,7 +669,7 @@ button { font-family:inherit; color:inherit; }
 .pc-orb { display:grid; place-items:center; width:52px; height:52px; border-radius:18px; background:#fff; color:var(--pinkDark); box-shadow:0 6px 16px rgba(181,121,142,.25); animation:float 3.2s ease-in-out infinite; }
 .pc-text h2 { margin-bottom:2px; }
 .pc-text p { font-size:12.5px; color:#5A4358; line-height:1.55; }
-.plan-mini .pm-head { display:flex; justify-content:space-between; align-items:center; }
+.pm-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
 .plan-mini h2 { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
 
 .home-tiles { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
@@ -849,8 +849,9 @@ body.wl-open { overflow:hidden; }
 
 /* ---------- Butty ---------- */
 .butty-card { background:linear-gradient(135deg,rgba(251,220,196,.5),rgba(245,198,216,.4)); }
-.butty-head { display:flex; align-items:center; gap:14px; margin-bottom:12px; }
-.butty-img { width:76px; height:76px; object-fit:contain; flex-shrink:0; filter:drop-shadow(0 6px 10px rgba(181,121,142,.25)); animation:rise .5s var(--ease) both; }
+.butty-head { position:relative; display:flex; align-items:center; gap:14px; margin-bottom:12px; }
+.butty-head::before { content:''; position:absolute; left:2px; top:50%; width:92px; height:92px; transform:translateY(-50%); background:radial-gradient(circle, rgba(255,255,255,.95) 0%, rgba(255,241,246,.6) 45%, rgba(255,241,246,0) 72%); filter:blur(2px); z-index:0; }
+.butty-img { position:relative; z-index:1; width:76px; height:76px; object-fit:contain; flex-shrink:0; filter:drop-shadow(0 0 10px rgba(255,255,255,.9)) drop-shadow(0 6px 10px rgba(181,121,142,.25)); animation:rise .5s var(--ease) both; }
 .butty-text h2 { margin-bottom:3px; }
 .butty-text p { font-size:12.5px; color:var(--soft); line-height:1.5; }
 .butty-rows { display:flex; flex-direction:column; gap:6px; }
@@ -862,10 +863,20 @@ body.wl-open { overflow:hidden; }
 .br-note { font-size:11px; color:var(--soft); }
 .butty-row.on .br-note { color:var(--mintDark); font-weight:600; }
 
+.butty-summary { position:relative; display:flex; align-items:center; gap:14px; background:linear-gradient(135deg,rgba(251,220,196,.4),rgba(217,207,240,.35)); cursor:pointer; overflow:hidden; }
+.bs-glow { position:absolute; left:-10px; top:50%; width:100px; height:100px; transform:translateY(-50%); background:radial-gradient(circle, rgba(255,255,255,.9) 0%, rgba(255,241,246,.5) 45%, rgba(255,241,246,0) 72%); filter:blur(2px); z-index:0; }
+.bs-img { position:relative; z-index:1; width:60px; height:60px; object-fit:contain; flex-shrink:0; filter:drop-shadow(0 0 9px rgba(255,255,255,.9)) drop-shadow(0 4px 8px rgba(181,121,142,.22)); }
+.bs-text { position:relative; z-index:1; flex:1; }
+.bs-text h2 { font-size:14.5px; margin-bottom:5px; }
+.bs-dots { display:flex; align-items:center; gap:4px; flex-wrap:wrap; font-size:10px; color:var(--soft); }
+.bs-dot { display:grid; place-items:center; width:16px; height:16px; border-radius:999px; background:#EFE3EC; color:#B69BB6; }
+.bs-dot.on { background:var(--mint); color:var(--mintDark); }
+.bs-dots span { margin-right:6px; }
+
 /* ---------- Como te sentiste hoje? ---------- */
 .mood-row { display:flex; gap:6px; justify-content:space-between; }
 .mood-btn { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 2px 7px; border-radius:16px; border:1.5px solid var(--line); background:rgba(255,255,255,.7); font-family:inherit; font-size:9.5px; font-weight:600; color:var(--soft); cursor:pointer; transition:all .25s var(--ease); }
-.mood-btn img { width:38px; height:38px; object-fit:contain; }
+.mood-btn img { width:38px; height:38px; object-fit:contain; filter:drop-shadow(0 0 7px rgba(255,255,255,.85)); }
 .mood-btn:active { transform:scale(.92); }
 .mood-btn.on { background:linear-gradient(135deg,rgba(245,198,216,.9),rgba(217,207,240,.6)); border-color:transparent; color:var(--pinkDeep); box-shadow:0 6px 14px rgba(181,121,142,.28); }
 .ex-confirm { margin:4px 8px 0; animation:rise .35s var(--ease) both; }
