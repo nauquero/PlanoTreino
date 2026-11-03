@@ -1493,7 +1493,6 @@ const focusOf = () => { const o = profileOf().objective; return o && FOCUS[o] ? 
 function paintHeader() {
   const n = displayName();
   $('avatar').textContent = n[0].toUpperCase();
-  $('header-aka').textContent = `aka ${n}`;
 }
 
 function daysIn(y, m) { return new Date(y, m, 0).getDate(); }
