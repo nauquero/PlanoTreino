@@ -14,7 +14,6 @@ import { restBgInit, restBgUpdate, restBgDone, restBgStop } from './rest-bg.js';
 import { MUSCLES, MUSCLE_LABEL, OBJECTIVES, OBJECTIVE_KEYS, OBJECTIVE_PLAN, planOf, quoteOf, greetingOf, cardioLabel, sportLabel } from './plan.js';
 import { openWelcome, WELCOME_PAGES, EDIT_PAGES, OBJECTIVE_PAGES } from './welcome.js';
 import { GENDERS, STATUSES, PHASES as CYCLE_PHASES, cycleDayInfo, lateDays, nextPeriod, pregnancyInfo, ageOf, diffDays } from './cycle.js';
-import { BUTTY_EYE_OPTIONS, BUTTY_DEFAULT_EYE, BUTTY_DEFAULT_BOW, buttySrc, setButtyColors, getButtyColors, warmButtyCache, previewButty } from './butty.js';
 
 // ---------- estado ----------
 const state = {
@@ -41,7 +40,7 @@ const state = {
   cycleDay: null,
   sleepDate: null,
   showPlanCard: false,
-  data: { measurements: [], logs: [], gymDays: new Set(), profile: {}, sleep: [], moods: [], meals: [], custom: [], goals: new Map() }
+  data: { measurements: [], logs: [], gymDays: new Set(), profile: {}, sleep: [], moods: [], meals: [], waters: [], custom: [], goals: new Map() }
 };
 
 // exercícios do plano, por nome
@@ -97,11 +96,10 @@ function applyData(out) {
   state.data.logs = out.logs;
   state.data.gymDays = new Set(out.gym_days);
   state.data.profile = out.profile || {};
-  const butty = state.data.profile.butty || {};
-  setButtyColors(butty.eye, butty.bow);
   state.data.sleep = out.sleep || [];
   state.data.moods = out.moods || [];
   state.data.meals = out.meals || [];
+  state.data.waters = out.waters || [];
   state.data.custom = out.custom_exercises || [];
   state.data.goals = new Map((out.goals || []).map((g) => [g.month, Number(g.days)]));
 }
@@ -959,6 +957,7 @@ function renderAlimentacao() {
 
   pageEl.innerHTML = `
     ${mealCheckinHtml()}
+    ${waterCheckinHtml()}
     <div class="card hydration tilt">
       <h2>${icon('droplet', 18)} Hidratação</h2>
       ${waterHtml}
@@ -1010,6 +1009,37 @@ async function saveMeal(btn) {
   btn.closest('.meal-q').querySelectorAll('.meal-btn').forEach((b) => b.disabled = true);
   try {
     await api.setMeal(uid(), state.pin, { day: today(), ate });
+    await refreshData();
+    render();
+    burst(cx, cy, 20);
+    popSuccess();
+  } catch (e) {
+    toast(errorMessage(e.code));
+    render();
+  }
+}
+
+// ---------- Bebeste o suficiente hoje? (check-in diário) ----------
+function todayWater() { return state.data.waters.find((w) => w.day === today()); }
+
+function waterCheckinHtml() {
+  const existing = todayWater();
+  return `<div class="card meal-checkin">
+    <h2>${icon('droplet', 18)} Bebeste o suficiente hoje?</h2>
+    <div class="meal-q" role="radiogroup" aria-label="Bebeste o suficiente hoje?">
+      <button type="button" class="meal-btn${existing && existing.ok === false ? ' on' : ''}" data-action="save-water" data-ok="0" role="radio" aria-checked="${!!existing && existing.ok === false}">Ainda não</button>
+      <button type="button" class="meal-btn${existing && existing.ok === true ? ' on' : ''}" data-action="save-water" data-ok="1" role="radio" aria-checked="${!!existing && existing.ok === true}">Sim, bebi bem</button>
+    </div>
+    <p class="diet-note">${existing ? 'Já respondeste hoje — podes mudar quando quiseres.' : 'Vê a quantidade sugerida mais abaixo, em "Hidratação".'}</p>
+  </div>`;
+}
+
+async function saveWater(btn) {
+  const ok = btn.dataset.ok === '1';
+  const [cx, cy] = centerOf(btn);
+  btn.closest('.meal-q').querySelectorAll('.meal-btn').forEach((b) => b.disabled = true);
+  try {
+    await api.setWater(uid(), state.pin, { day: today(), ok });
     await refreshData();
     render();
     burst(cx, cy, 20);
@@ -1207,7 +1237,7 @@ function weekStripHtml() {
 }
 
 // ---------- Butty ----------
-const BUTTY_IMG = buttySrc;
+const BUTTY_IMG = (name) => `icons/butty/${name}.webp`;
 
 function buttyPillars() {
   const t = today();
@@ -1232,12 +1262,36 @@ const XP_LEVELS = [
   { xp: 125, img: 'body-full', name: 'Butty completa' }
 ];
 
+// Conta quantas vezes, ao longo do tempo, um registo bateu a melhor carga anterior desse exercício
+// (1 por registo que melhora o recorde, não por série, para não inflacionar com um único treino).
+function buttyPRCount() {
+  const byExercise = new Map();
+  for (const l of state.data.logs) {
+    if (!byExercise.has(l.exercise)) byExercise.set(l.exercise, []);
+    byExercise.get(l.exercise).push(l);
+  }
+  let count = 0;
+  for (const logs of byExercise.values()) {
+    const sorted = [...logs].sort((a, b) => a.date.localeCompare(b.date) || (a.id || 0) - (b.id || 0));
+    let bestW = 0, bestR = 0;
+    for (const l of sorted) {
+      let logW = 0, logR = 0;
+      for (const r of rowsOfLog(l)) {
+        if (!(r.weight > 0) || !(r.reps > 0)) continue;
+        if (r.weight > logW || (r.weight === logW && r.reps > logR)) { logW = r.weight; logR = r.reps; }
+      }
+      if (logW > 0 && (logW > bestW || (logW === bestW && logR > bestR))) { count++; bestW = logW; bestR = logR; }
+    }
+  }
+  return count;
+}
+
 function buttyXP() {
   const t = today();
   const trainedDays = [...trainedDaySet()].filter((d) => d <= t).length;
   const sleepGood = state.data.sleep.filter((s) => s.day <= t && Number(s.hours) >= 7).length;
   const mealGood = state.data.meals.filter((m) => m.day <= t && Number(m.ate) >= 1).length;
-  return trainedDays + sleepGood + mealGood;
+  return trainedDays + sleepGood + mealGood + buttyPRCount();
 }
 
 function buttyProgress() {
@@ -1274,7 +1328,8 @@ function buttyBadges() {
     { ic: 'flame', label: '7 dias seguidos em pleno', done: buttyStreak() >= 7 },
     { ic: 'moon', label: '10 noites bem dormidas', done: sleepGood >= 10 },
     { ic: 'leaf', label: '10 refeições em dia', done: mealGood >= 10 },
-    { ic: 'dumbbell', label: '20 treinos registados', done: trainedDays >= 20 }
+    { ic: 'dumbbell', label: '20 treinos registados', done: trainedDays >= 20 },
+    { ic: 'trend', label: 'Primeira melhor carga', done: buttyPRCount() >= 1 }
   ];
 }
 
@@ -1366,6 +1421,26 @@ const TILES = [
   ['perfil', 'Perfil', 'user', 'O teu plano e os teus dados', 'peach']
 ];
 
+function cycleTodayHtml() {
+  const c = profileOf().cycle;
+  const t = today();
+  if (!c || c.status === 'none' || isGaby()) return '';
+  if (c.status === 'pregnant') {
+    const p = pregnancyInfo(c, t);
+    if (!p) return '';
+    return `<div class="card cycle-today tilt" data-action="go-page" data-page="progresso" style="--c:#F2A9C4">
+      <div class="ct-row"><span class="ct-chip" style="--c:#F2A9C4">${esc(p.tri.label)}</span><span class="ct-wk">${p.weeks} semanas${p.extraDays ? ` e ${p.extraDays} d` : ''}</span></div>
+      <p class="ct-text">Hoje estás grávida de <b>${p.weeks} semanas</b>. Toca para veres mais.</p>
+    </div>`;
+  }
+  if (c.status !== 'cycle' || !c.last_period) return '';
+  const info = cycleDayInfo(c, t);
+  return `<div class="card cycle-today tilt" data-action="go-page" data-page="progresso" style="--c:${info.color}">
+    <div class="ct-row"><span class="ct-chip" style="--c:${info.color}">${esc(info.label)}</span><span class="ct-wk">Dia ${info.n} de ${info.L}</span></div>
+    <p class="ct-text">Hoje estás na fase: <b>${esc(info.label)}</b>${info.note ? ` — ${esc(info.note)}` : ''}</p>
+  </div>`;
+}
+
 function renderInicio() {
   const now = new Date();
   const t = today();
@@ -1408,17 +1483,6 @@ function renderInicio() {
     </div>`;
   }
 
-  const planBanner = isGaby() ? '' : plan.done ? `<div class="card plan-mini">
-      <div class="pm-head"><h2>${icon('sparkles', 18)} O teu plano</h2><button class="link-btn" data-action="edit-plan">Editar</button></div>
-      <div class="plan-chips">
-        ${plan.areas.slice(0, 6).map((k) => `<span class="plan-chip">${icon('dumbbell', 13)}${esc(MUSCLE_LABEL[k])}</span>`).join('')}${plan.areas.length > 6 ? `<span class="plan-chip">+${plan.areas.length - 6}</span>` : ''}
-        ${plan.days ? `<span class="plan-chip">${icon('calendar', 13)}${plan.days}×/semana</span>` : ''}
-      </div></div>`
-    : `<div class="card plan-cta">
-      <div class="pc-orb" aria-hidden="true">${icon('sparkles', 26)}</div>
-      <div class="pc-text"><h2>Personaliza o teu plano</h2><p>Escolhe o objetivo, os músculos, o cardio e os desportos. O treino passa a mostrar só o que te interessa.</p></div>
-      <button class="save-btn" data-action="start-plan">Começar</button></div>`;
-
   pageEl.innerHTML = `
     <div class="card home-hero tilt">
       <span class="hh-spark s1" aria-hidden="true">${icon('sparkles', 18)}</span><span class="hh-spark s2" aria-hidden="true">${icon('sparkles', 12)}</span><span class="hh-spark s3" aria-hidden="true">${icon('star', 11)}</span>
@@ -1432,6 +1496,7 @@ function renderInicio() {
     ${moodCheckinHtml()}
 
     ${todayCard}
+    ${cycleTodayHtml()}
 
     <div class="card home-month">
       <div class="hm-head"><h2>${MONTH_NAMES[now.getMonth()]} em resumo</h2><button class="link-btn" data-action="go-page" data-page="progresso">Ver tudo</button></div>
@@ -1457,8 +1522,6 @@ function renderInicio() {
         <div class="mini-stat" style="--k:3">${icon('trend', 16)}<b>${w !== null ? ptNum(w) : '–'}</b><span>${w !== null ? `kg${dW ? ` (${dW > 0 ? '+' : ''}${ptNum(dW)})` : ''}` : 'sem peso'}</span></div>
       </div>
     </div>
-
-    ${planBanner}
 
     <div class="card home-tiles-card">
       <h2>O que podes fazer aqui</h2>
@@ -1538,9 +1601,8 @@ function openButtyIntro(onFinish) {
   const root = $('welcome');
   const appEl = $('app');
   const splashEl2 = $('splash');
-  const st = { eye: BUTTY_DEFAULT_EYE, bow: BUTTY_DEFAULT_BOW };
-  const steps = ['ola', 'xp', 'customiza', 'pronto'];
-  let idx = 0, dir = 1, previewTimer = 0, saving = false;
+  const steps = ['ola', 'xp', 'pronto'];
+  let idx = 0, dir = 1;
   const opener = document.activeElement;
 
   root.hidden = false;
@@ -1567,27 +1629,10 @@ function openButtyIntro(onFinish) {
         </ul>
         <p class="wl-sub">Cada um soma XP, sobe o meu nível e desbloqueia uma cara nova minha. Vê o teu progresso sempre que quiseres na aba Início.</p>
       </div>`;
-    if (key === 'customiza') return `
-      <h2 class="wl-h" tabindex="-1">Veste a tua Butty</h2>
-      <p class="wl-sub">Escolhe a cor dos olhos e do laço. Podes mudar sempre que quiseres, no Perfil.</p>
-      <div class="bi-img-wrap"><div class="bi-glow" aria-hidden="true"></div><img class="bi-hero-img" id="bi-preview" src="${BUTTY_IMG('face-wink')}" alt="A tua Butty"></div>
-      <div class="bi-section">
-        <div class="bi-label">Cor dos olhos</div>
-        <div class="bi-eyes" role="radiogroup" aria-label="Cor dos olhos">
-          ${BUTTY_EYE_OPTIONS.map((o) => `<button type="button" class="bi-eye-swatch${st.eye === o.hex ? ' on' : ''}" data-eye="${o.hex}" style="--sw:${o.hex}" role="radio" aria-checked="${st.eye === o.hex}"><span class="bi-dot" aria-hidden="true"></span>${esc(o.label)}</button>`).join('')}
-        </div>
-      </div>
-      <div class="bi-section">
-        <div class="bi-label">Cor do laço</div>
-        <div class="bi-bow-row">
-          <input type="color" id="bi-bow" value="${st.bow}" aria-label="Cor do laço">
-          <span class="bi-bow-hint">Toca para escolheres qualquer cor</span>
-        </div>
-      </div>`;
     return `
       <div class="wl-hero wl-done bi-hero">
-        <div class="bi-img-wrap big"><div class="bi-glow" aria-hidden="true"></div><img class="bi-hero-img" id="bi-done-img" src="${BUTTY_IMG('face-laugh')}" alt="A tua Butty"></div>
-        <h2 class="wl-h" tabindex="-1">A tua Butty está pronta!</h2>
+        <div class="bi-img-wrap big"><div class="bi-glow" aria-hidden="true"></div><img class="bi-hero-img" src="${BUTTY_IMG('face-laugh')}" alt="Butty"></div>
+        <h2 class="wl-h" tabindex="-1">Vamos a isto!</h2>
         <p class="wl-sub">Agora é só cuidares das duas. Vamos ao resto do teu plano?</p>
       </div>`;
   };
@@ -1621,7 +1666,7 @@ function openButtyIntro(onFinish) {
     backBtn.hidden = idx === 0;
     const last = idx === steps.length - 1;
     nextBtn.textContent = last ? 'Vamos lá!' : key === 'ola' ? 'Conhecer a Butty' : 'Seguinte';
-    if (key === 'ola' || key === 'customiza') {
+    if (key === 'ola') {
       setTimeout(() => { const w = pageEl2.querySelector('.bi-img-wrap'); if (w) { const r = w.getBoundingClientRect(); sparkle(r.left + r.width / 2, r.top + r.height / 2, 10); } }, 250);
     }
     if (key === 'pronto') {
@@ -1631,28 +1676,6 @@ function openButtyIntro(onFinish) {
     if (h) h.focus({ preventScroll: true });
     root.querySelector('.wl-stage').scrollTop = 0;
   };
-
-  const updatePreview = () => {
-    clearTimeout(previewTimer);
-    previewTimer = setTimeout(async () => {
-      const img = root.querySelector('#bi-preview');
-      if (!img) return;
-      img.src = await previewButty('face-wink', st.eye, st.bow);
-    }, 60);
-  };
-
-  pageEl2.addEventListener('click', (e) => {
-    const sw = e.target.closest('.bi-eye-swatch');
-    if (sw) {
-      st.eye = sw.dataset.eye;
-      pageEl2.querySelectorAll('.bi-eye-swatch').forEach((b) => { const on = b === sw; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
-      updatePreview();
-      haptic([12]);
-    }
-  });
-  pageEl2.addEventListener('input', (e) => {
-    if (e.target.id === 'bi-bow') { st.bow = e.target.value; updatePreview(); }
-  });
 
   const finish = () => {
     document.removeEventListener('keydown', onKey, true);
@@ -1666,32 +1689,17 @@ function openButtyIntro(onFinish) {
     }, 380);
   };
 
-  const save = async () => {
-    saving = true;
-    nextBtn.disabled = true;
-    try {
-      const data = { ...profileOf(), butty: { eye: st.eye, bow: st.bow } };
-      await api.setProfile(uid(), state.pin, data);
-      state.data.profile = data;
-      setButtyColors(st.eye, st.bow);
-      await warmButtyCache(() => render());
-    } catch { /* fica com a cor por omissão se falhar */ }
-    saving = false;
-    finish();
-  };
-
   nextBtn.addEventListener('click', () => {
-    if (saving) return;
-    if (idx === steps.length - 1) { save(); return; }
+    if (idx === steps.length - 1) { finish(); return; }
     idx++; dir = 1; draw();
   });
-  backBtn.addEventListener('click', () => { if (saving || idx === 0) return; idx--; dir = -1; draw(); });
-  root.querySelector('#bi-close').addEventListener('click', () => { if (!saving) finish(); });
+  backBtn.addEventListener('click', () => { if (idx === 0) return; idx--; dir = -1; draw(); });
+  root.querySelector('#bi-close').addEventListener('click', () => finish());
 
   function onKey(e) {
-    if (e.key === 'Escape' && !saving) { e.preventDefault(); finish(); return; }
+    if (e.key === 'Escape') { e.preventDefault(); finish(); return; }
     if (e.key !== 'Tab') return;
-    const f = [...root.querySelectorAll('button:not([disabled]):not([hidden]), input:not([disabled])')].filter((x) => x.offsetParent !== null);
+    const f = [...root.querySelectorAll('button:not([disabled]):not([hidden])')].filter((x) => x.offsetParent !== null);
     if (!f.length) return;
     const first = f[0], last = f[f.length - 1];
     if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
@@ -1853,63 +1861,6 @@ function buttyAchievementsHtml() {
   </div>`;
 }
 
-let buttyEdit = null;
-
-function buttyCustomizeCardHtml() {
-  if (!buttyEdit) buttyEdit = { ...getButtyColors() };
-  return `<div class="card">
-    <h2>${icon('sparkles', 18)} Personalizar a Butty</h2>
-    <div class="bi-img-wrap sm"><div class="bi-glow" aria-hidden="true"></div><img class="bi-hero-img" id="bc-preview" src="${BUTTY_IMG('face-wink')}" alt="A tua Butty"></div>
-    <div class="bi-section">
-      <div class="bi-label">Cor dos olhos</div>
-      <div class="bi-eyes" role="radiogroup" aria-label="Cor dos olhos" id="bc-eyes">
-        ${BUTTY_EYE_OPTIONS.map((o) => `<button type="button" class="bi-eye-swatch${buttyEdit.eye === o.hex ? ' on' : ''}" data-action="bc-eye" data-hex="${o.hex}" style="--sw:${o.hex}" role="radio" aria-checked="${buttyEdit.eye === o.hex}"><span class="bi-dot" aria-hidden="true"></span>${esc(o.label)}</button>`).join('')}
-      </div>
-    </div>
-    <div class="bi-section">
-      <div class="bi-label">Cor do laço</div>
-      <div class="bi-bow-row"><input type="color" id="bc-bow" value="${buttyEdit.bow}" aria-label="Cor do laço"><span class="bi-bow-hint">Toca para escolheres qualquer cor</span></div>
-    </div>
-    <button class="save-btn" data-action="save-butty">Guardar aparência</button>
-    <div class="saved-flash" id="bc-flash"></div>
-  </div>`;
-}
-
-let buttyPreviewTimer = 0;
-function updateButtyEditPreview() {
-  clearTimeout(buttyPreviewTimer);
-  buttyPreviewTimer = setTimeout(async () => {
-    const img = $('bc-preview');
-    if (!img) return;
-    img.src = await previewButty('face-wink', buttyEdit.eye, buttyEdit.bow);
-  }, 60);
-}
-
-function pickButtyEye(btn) {
-  buttyEdit.eye = btn.dataset.hex;
-  $('bc-eyes').querySelectorAll('.bi-eye-swatch').forEach((b) => { const on = b === btn; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
-  updateButtyEditPreview();
-}
-
-async function saveButty(btn) {
-  btn.disabled = true;
-  const [cx, cy] = centerOf(btn);
-  try {
-    const data = { ...profileOf(), butty: { eye: buttyEdit.eye, bow: buttyEdit.bow } };
-    await api.setProfile(uid(), state.pin, data);
-    state.data.profile = data;
-    setButtyColors(buttyEdit.eye, buttyEdit.bow);
-    await warmButtyCache(() => {});
-    render();
-    flashOk($('bc-flash'), 'Aparência guardada!');
-    burst(cx, cy, 28);
-    popSuccess();
-  } catch (e) {
-    btn.disabled = false;
-    toast(errorMessage(e.code));
-  }
-}
-
 function renderPerfil() {
   const p = profileOf();
   const c = p.cycle || {};
@@ -1919,7 +1870,6 @@ function renderPerfil() {
   pageEl.innerHTML = `
     ${perfilHeroHtml()}
     ${buttySummaryHtml()}
-    ${buttyCustomizeCardHtml()}
     ${buttyAchievementsHtml()}
     ${planCardHtml()}
     <div class="card" id="profile-form">
@@ -2541,12 +2491,11 @@ function onClick(ev) {
     case 'edit-sleep': state.sleepDate = d.day; state.confirm = null; render(); scrollToAndFocus('#sleep-form'); return;
     case 'del-sleep': state.confirm = `sleep:${d.day}`; render(); return;
     case 'save-meal': saveMeal(el); return;
+    case 'save-water': saveWater(el); return;
     case 'save-mood': saveMood(el); return;
     case 'save-profile': saveProfile(el); return;
     case 'period-today': periodStartedToday(el); return;
     case 'toggle-plan-card': state.showPlanCard = !state.showPlanCard; render(); return;
-    case 'bc-eye': pickButtyEye(el); return;
-    case 'save-butty': saveButty(el); return;
     case 'cycle-day': state.cycleDay = d.date; render(); return;
     case 'edit-log':
       state.editingLog = Number(d.id); state.openExercise = d.ex; state.confirm = null;
@@ -2580,7 +2529,6 @@ pageEl.addEventListener('input', (e) => {
     $('sl-calc').innerHTML = sleepCalcText($('sl-bed').value, $('sl-wake').value, null);
     return;
   }
-  if (e.target.id === 'bc-bow') { buttyEdit.bow = e.target.value; updateButtyEditPreview(); return; }
   if (e.target.id !== 'm-weight' || !isGaby()) return;
   const bmi = $('m-bmi');
   const w = Number(e.target.value);
@@ -2785,15 +2733,14 @@ async function startSession(profile, pin) {
   $('avatar').className = `avatar ${user.tone}`;
   paintHeader();
   $('edition-pill').hidden = !isGaby();
-  const outdated = !isDemo && out.version !== 6;
+  const outdated = !isDemo && out.version !== 7;
   $('demo-banner').innerHTML = `${icon('alert', 16)}<span>${outdated
-    ? 'Há novidades! Falta atualizar a base de dados: corre o ficheiro supabase/atualizar-butty.sql no Supabase.'
+    ? 'Há novidades! Falta atualizar a base de dados: corre o ficheiro supabase/atualizar-agua.sql no Supabase.'
     : 'Modo demo: os dados ficam só neste dispositivo. Liga o Supabase (ver README) para os guardar online.'}</span>`;
   $('demo-banner').hidden = !(isDemo || outdated);
   $('app').hidden = false;
   render(true);
   window.scrollTo(0, 0);
-  warmButtyCache(() => render());
   if (!outdated && !goalFor(monthKeyOf(new Date()))) setTimeout(() => toast('Novo mês, nova meta! Define-a na aba Progresso.'), 900);
 
   if (profileOf().new_account && !planCfg().done && !isGaby()) {
@@ -2808,7 +2755,6 @@ function logout() {
   rest.stop();
   state.user = null;
   state.pin = null;
-  buttyEdit = null;
   try { localStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(SESSION_KEY); } catch { /* ignora */ }
   clearTimeout(leaveTimer);
   $('app').hidden = true;
