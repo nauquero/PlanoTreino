@@ -818,4 +818,55 @@ body.wl-open { overflow:hidden; }
 .ex-x:hover { background:#FCE3EA; color:#A33A5F; }
 .ex-x:active { transform:scale(.88); }
 .ex-head .ex-title { padding-right:36px; }
+
+/* ---------- Sono ---------- */
+.sleep-calc { display:flex; align-items:center; gap:8px; margin:2px 0 14px; padding:10px 14px; border-radius:14px; background:rgba(217,207,240,.35); font-size:12.5px; color:var(--soft); line-height:1.5; }
+.sleep-calc b { color:var(--pinkDeep); }
+.sleep-q { display:flex; gap:6px; margin:4px 0 14px; }
+.moon-btn { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px 0 8px; border-radius:16px; border:1.5px solid var(--line); background:rgba(255,255,255,.7); color:#C9BCC9; cursor:pointer; font-size:9.5px; font-weight:600; transition:all .25s var(--ease); }
+.moon-btn span { color:var(--gray); }
+.moon-btn:active { transform:scale(.92); }
+.moon-btn.on { background:linear-gradient(135deg,rgba(217,207,240,.9),rgba(245,198,216,.7)); border-color:transparent; color:#7A63B0; box-shadow:0 6px 14px rgba(161,139,214,.28); }
+.moon-btn.on span { color:var(--ink); }
+.sleep-stats { display:flex; gap:8px; margin-bottom:6px; }
+.sleep-stats > div { flex:1; display:flex; flex-direction:column; padding:10px 12px; border-radius:16px; background:#F3EFFA; font-size:10.5px; color:var(--soft); line-height:1.35; }
+.sleep-stats b { font-size:14px; font-weight:700; color:var(--ink); }
+.sbar { fill:#F2A9C4; }
+.sbar.q1, .sbar.q2 { fill:#F7C7A8; }
+.sbar.q3 { fill:#D9CFF0; }
+.sbar.q5 { fill:#9ED9C1; }
+.sbar.empty { fill:#EFE3EC; }
+.moons { display:inline-flex; gap:1px; margin-left:auto; }
+.moon { color:#E3D9E3; display:inline-flex; }
+.moon.on { color:#A18BD6; }
+.hist-row .moons + .le-actions { margin-left:6px; }
+.sl-times { display:block; font-size:10px; color:var(--soft); font-weight:400; }
+
+/* ---------- Comi bem hoje? ---------- */
+.meal-q { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+.meal-btn { flex:1; min-width:90px; padding:10px 8px; border-radius:16px; border:1.5px solid var(--line); background:rgba(255,255,255,.7); color:var(--soft); font-family:inherit; font-size:11.5px; font-weight:600; cursor:pointer; transition:all .25s var(--ease); }
+.meal-btn:active { transform:scale(.95); }
+.meal-btn.on { background:linear-gradient(135deg,#DDF2E9,var(--mint)); border-color:transparent; color:var(--mintDark); box-shadow:0 6px 14px rgba(46,110,86,.18); }
+
+/* ---------- Butty ---------- */
+.butty-card { background:linear-gradient(135deg,rgba(251,220,196,.5),rgba(245,198,216,.4)); }
+.butty-head { display:flex; align-items:center; gap:14px; margin-bottom:12px; }
+.butty-img { width:76px; height:76px; object-fit:contain; flex-shrink:0; filter:drop-shadow(0 6px 10px rgba(181,121,142,.25)); animation:rise .5s var(--ease) both; }
+.butty-text h2 { margin-bottom:3px; }
+.butty-text p { font-size:12.5px; color:var(--soft); line-height:1.5; }
+.butty-rows { display:flex; flex-direction:column; gap:6px; }
+.butty-row { display:flex; align-items:center; gap:8px; width:100%; padding:9px 12px; border-radius:14px; border:none; background:rgba(255,255,255,.75); color:var(--soft); font-family:inherit; cursor:pointer; text-align:left; transition:transform .15s var(--ease), background .2s; }
+.butty-row:active { transform:scale(.98); }
+.butty-row .br-ico { display:grid; place-items:center; width:20px; height:20px; border-radius:999px; background:#EFE3EC; color:#B69BB6; flex-shrink:0; }
+.butty-row.on .br-ico { background:var(--mint); color:var(--mintDark); }
+.br-label { flex:1; font-size:12.5px; font-weight:600; color:var(--ink); }
+.br-note { font-size:11px; color:var(--soft); }
+.butty-row.on .br-note { color:var(--mintDark); font-weight:600; }
+
+/* ---------- Como te sentiste hoje? ---------- */
+.mood-row { display:flex; gap:6px; justify-content:space-between; }
+.mood-btn { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 2px 7px; border-radius:16px; border:1.5px solid var(--line); background:rgba(255,255,255,.7); font-family:inherit; font-size:9.5px; font-weight:600; color:var(--soft); cursor:pointer; transition:all .25s var(--ease); }
+.mood-btn img { width:38px; height:38px; object-fit:contain; }
+.mood-btn:active { transform:scale(.92); }
+.mood-btn.on { background:linear-gradient(135deg,rgba(245,198,216,.9),rgba(217,207,240,.6)); border-color:transparent; color:var(--pinkDeep); box-shadow:0 6px 14px rgba(181,121,142,.28); }
 .ex-confirm { margin:4px 8px 0; animation:rise .35s var(--ease) both; }

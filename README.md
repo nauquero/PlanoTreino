@@ -47,7 +47,10 @@ Quem recebe um convite cria a sua conta sozinha, em 3 passos (conta, sobre ela, 
 No Perfil cada pessoa escolhe o objetivo (hipertrofia, perda de gordura + hipertrofia, emagrecer com saúde, saúde e bem-estar), que ajusta a alimentação e as mensagens; o plano de treino base é igual para todas. O temporizador de descanso mostra a contagem numa notificação multimédia enquanto a app está em segundo plano e toca um alarme no fim (depende do telemóvel e do navegador).
 
 ### Perfil e ciclo menstrual
-A aba Perfil guarda nome, apelido, género, data de nascimento e os dados do ciclo (última menstruação, duração do ciclo, gravidez, etc.). A aba Progresso mostra a fase do ciclo e o que esperar em cada dia. Para ativar corre `supabase/atualizar-perfil.sql` no SQL Editor (seguro repetir, não apaga dados). A aba do Sono foi retirada da app; os registos antigos continuam guardados na base de dados.
+A aba Perfil guarda nome, apelido, género, data de nascimento e os dados do ciclo (última menstruação, duração do ciclo, gravidez, etc.). A aba Progresso mostra a fase do ciclo e o que esperar em cada dia. Para ativar corre `supabase/atualizar-perfil.sql` no SQL Editor (seguro repetir, não apaga dados).
+
+### Butty, a mascote
+A aba "Alimentação" passou a chamar-se "Saúde" e agora também tem o registo do sono (horas de deitar/acordar e qualidade). Na aba Início aparece a Butty, a mascote da app: o seu humor reflete se já fizeste exercício, dormiste bem (7h+) e comeste bem hoje (registo rápido "Comi bem hoje?" na aba Saúde), e há também um check-in diário "Como te sentiste hoje?" com 5 estados de humor. Para ativar corre `supabase/atualizar-butty.sql` no SQL Editor (seguro repetir, não apaga dados).
 
 ### Treino da Gabriela
 Uma pessoa com o objetivo `emagrecimento` (ver `supabase/novo-utilizador.sql`) vê um treino diferente: plano de 12 semanas (5 de outubro a 27 de dezembro) a fazer em casa, 3 sessões por semana. O plano está em `js/gaby-data.js` e os vídeos do treino principal em `plano-principal.json`. Para as restantes pessoas nada muda.
