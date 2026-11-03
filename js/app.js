@@ -1216,17 +1216,81 @@ function buttyPillars() {
   return { exerciseOk, sleepOk, mealOk, sleepEntry, mealEntry };
 }
 
-const BUTTY_LEVELS = [
-  { img: 'face-sleepy', title: 'A Butty está cansadinha...', text: 'Ainda não cuidaste de nenhuma destas coisas hoje. Começa por uma — a Butty já fica mais contente.' },
-  { img: 'face-shock', title: 'A Butty precisa de ti', text: 'Falta cuidar de mais algumas coisas hoje para ela ficar bem disposta.' },
-  { img: 'face-love', title: 'A Butty está bem disposta', text: 'Estás a ir bem — falta só mais um bocadinho para ela ficar radiante.' },
-  { img: 'face-laugh', title: 'A Butty está radiante!', text: 'Exercício, sono e alimentação em dia. A Butty não podia estar mais feliz contigo.' }
+// Cada dia dá até 3 XP (exercício + dormir bem + comer bem). O XP acumula-se para sempre
+// e faz a Butty subir de nível, desbloqueando um visual novo dela em cada nível.
+const XP_LEVELS = [
+  { xp: 0, img: 'face-sleepy', name: 'Butty bebé' },
+  { xp: 6, img: 'face-shock', name: 'Butty curiosa' },
+  { xp: 15, img: 'face-joy', name: 'Butty animada' },
+  { xp: 28, img: 'face-love', name: 'Butty amorosa' },
+  { xp: 45, img: 'face-wink', name: 'Butty convencida' },
+  { xp: 66, img: 'face-laugh', name: 'Butty radiante' },
+  { xp: 92, img: 'face-peek', name: 'Butty brincalhona' },
+  { xp: 125, img: 'body-full', name: 'Butty completa' }
 ];
+
+function buttyXP() {
+  const t = today();
+  const trainedDays = [...trainedDaySet()].filter((d) => d <= t).length;
+  const sleepGood = state.data.sleep.filter((s) => s.day <= t && Number(s.hours) >= 7).length;
+  const mealGood = state.data.meals.filter((m) => m.day <= t && Number(m.ate) >= 1).length;
+  return trainedDays + sleepGood + mealGood;
+}
+
+function buttyProgress() {
+  const xp = buttyXP();
+  let idx = 0;
+  for (let i = 0; i < XP_LEVELS.length; i++) if (xp >= XP_LEVELS[i].xp) idx = i;
+  const cur = XP_LEVELS[idx];
+  const next = XP_LEVELS[idx + 1] || null;
+  const pct = next ? Math.min(100, Math.round(((xp - cur.xp) / (next.xp - cur.xp)) * 100)) : 100;
+  return { xp, level: idx + 1, cur, next, pct };
+}
+
+function buttyStreak() {
+  const sleepMap = new Map(state.data.sleep.map((s) => [s.day, s]));
+  const mealMap = new Map(state.data.meals.map((m) => [m.day, m]));
+  const trainedSet = trainedDaySet();
+  const perfect = (iso) => {
+    const sl = sleepMap.get(iso), me = mealMap.get(iso);
+    return trainedSet.has(iso) && !!sl && Number(sl.hours) >= 7 && !!me && Number(me.ate) >= 1;
+  };
+  let d = new Date();
+  if (!perfect(isoDate(d))) d = addDaysLocal(d, -1);
+  let n = 0;
+  while (n < 366 && perfect(isoDate(d))) { n++; d = addDaysLocal(d, -1); }
+  return n;
+}
+
+function buttyBadges() {
+  const trainedDays = [...trainedDaySet()].filter((d) => d <= today()).length;
+  const sleepGood = state.data.sleep.filter((s) => Number(s.hours) >= 7).length;
+  const mealGood = state.data.meals.filter((m) => Number(m.ate) >= 1).length;
+  return [
+    { ic: 'star', label: 'Primeiros passos', done: buttyXP() >= 1 },
+    { ic: 'flame', label: '7 dias seguidos em pleno', done: buttyStreak() >= 7 },
+    { ic: 'moon', label: '10 noites bem dormidas', done: sleepGood >= 10 },
+    { ic: 'leaf', label: '10 refeições em dia', done: mealGood >= 10 },
+    { ic: 'dumbbell', label: '20 treinos registados', done: trainedDays >= 20 }
+  ];
+}
+
+const BUTTY_DAY_NOTES = [
+  'Ainda não cuidaste de nada disto hoje — cada coisa que fizeres soma XP para sempre.',
+  'Vai indo bem — continua e ganha mais XP hoje.',
+  'Quase lá! Mais uma coisa e fazes pleno hoje.',
+  'Pleno hoje! Esse XP fica guardado no nível da Butty para sempre.'
+];
+
+function buttyBadgesHtml() {
+  return `<div class="butty-badges">${buttyBadges().map((b) => `<span class="bb-chip${b.done ? ' on' : ''}" title="${esc(b.label)}">${icon(b.ic, 14)}</span>`).join('')}</div>`;
+}
 
 function buttyHtml() {
   const { exerciseOk, sleepOk, mealOk, sleepEntry, mealEntry } = buttyPillars();
   const score = [exerciseOk, sleepOk, mealOk].filter(Boolean).length;
-  const lvl = BUTTY_LEVELS[score];
+  const prog = buttyProgress();
+  const streak = buttyStreak();
   const rows = [
     { ok: exerciseOk, label: 'Exercício hoje', page: 'treino', note: exerciseOk ? 'Feito' : 'Ainda não' },
     { ok: sleepOk, label: 'Dormir bem (7h+)', page: 'alimentacao', note: sleepEntry ? fmtHours(sleepEntry.hours) : 'Por registar' },
@@ -1234,14 +1298,21 @@ function buttyHtml() {
   ];
   return `<div class="card butty-card tilt">
     <div class="butty-head">
-      <img class="butty-img" src="${BUTTY_IMG(lvl.img)}" alt="Butty, a mascote">
-      <div class="butty-text"><h2>${esc(lvl.title)}</h2><p>${esc(lvl.text)}</p></div>
+      <img class="butty-img" src="${BUTTY_IMG(prog.cur.img)}" alt="Butty, a mascote">
+      <div class="butty-text">
+        <div class="butty-lvl-row"><span class="butty-lvl-chip">Nível ${prog.level}</span>${streak > 1 ? `<span class="butty-streak-chip">${icon('flame', 12)}${streak} dias</span>` : ''}</div>
+        <h2>${esc(prog.cur.name)}</h2>
+      </div>
     </div>
+    <div class="butty-xp-bar"><div class="butty-xp-fill" style="width:${prog.pct}%"></div></div>
+    <div class="butty-xp-label">${prog.next ? `${prog.xp - prog.cur.xp}/${prog.next.xp - prog.cur.xp} XP para o nível ${prog.level + 1} (${esc(prog.next.name)})` : `Nível máximo — ${prog.xp} XP ao todo. A Butty está completa!`}</div>
+    <p class="diet-note butty-note">${BUTTY_DAY_NOTES[score]}</p>
     <div class="butty-rows">
       ${rows.map((r) => `<button type="button" class="butty-row${r.ok ? ' on' : ''}" data-action="go-page" data-page="${r.page}">
         <span class="br-ico">${icon(r.ok ? 'check' : 'minus', 14)}</span><span class="br-label">${esc(r.label)}</span><span class="br-note">${esc(r.note)}</span>
       </button>`).join('')}
     </div>
+    ${buttyBadgesHtml()}
   </div>`;
 }
 
@@ -1586,16 +1657,25 @@ const SUBS = {
 
 function buttySummaryHtml() {
   const { exerciseOk, sleepOk, mealOk } = buttyPillars();
-  const score = [exerciseOk, sleepOk, mealOk].filter(Boolean).length;
-  const lvl = BUTTY_LEVELS[score];
+  const prog = buttyProgress();
   const dot = (ok) => `<span class="bs-dot${ok ? ' on' : ''}">${icon(ok ? 'check' : 'minus', 11)}</span>`;
   return `<div class="card butty-summary tilt" data-action="go-page" data-page="inicio">
     <div class="bs-glow" aria-hidden="true"></div>
-    <img class="bs-img" src="${BUTTY_IMG(lvl.img)}" alt="Butty, a mascote">
+    <img class="bs-img" src="${BUTTY_IMG(prog.cur.img)}" alt="Butty, a mascote">
     <div class="bs-text">
-      <h2>${esc(lvl.title)}</h2>
+      <h2>Nível ${prog.level} · ${esc(prog.cur.name)}</h2>
+      <div class="butty-xp-bar sm"><div class="butty-xp-fill" style="width:${prog.pct}%"></div></div>
       <div class="bs-dots">${dot(exerciseOk)}<span>Exercício</span>${dot(sleepOk)}<span>Sono</span>${dot(mealOk)}<span>Alimentação</span></div>
     </div>
+  </div>`;
+}
+
+function buttyAchievementsHtml() {
+  return `<div class="card">
+    <h2>${icon('star', 18)} Conquistas da Butty</h2>
+    <div class="achv-list">${buttyBadges().map((b) => `<div class="achv-row${b.done ? ' on' : ''}">
+      <span class="br-ico">${icon(b.ic, 14)}</span><span class="br-label">${esc(b.label)}</span>${b.done ? `<span class="br-note">${icon('check', 13)}</span>` : ''}
+    </div>`).join('')}</div>
   </div>`;
 }
 
@@ -1608,6 +1688,7 @@ function renderPerfil() {
   pageEl.innerHTML = `
     ${perfilHeroHtml()}
     ${buttySummaryHtml()}
+    ${buttyAchievementsHtml()}
     ${planCardHtml()}
     <div class="card" id="profile-form">
       <h2>${icon('user', 18)} Os meus dados</h2>
@@ -1907,15 +1988,14 @@ function buttyMonthStats() {
 
 function buttyProgressHtml() {
   const { radiant } = buttyMonthStats();
-  const { exerciseOk, sleepOk, mealOk } = buttyPillars();
-  const score = [exerciseOk, sleepOk, mealOk].filter(Boolean).length;
-  const lvl = BUTTY_LEVELS[score];
+  const prog = buttyProgress();
   return `<div class="card butty-summary tilt" data-action="go-page" data-page="inicio">
     <div class="bs-glow" aria-hidden="true"></div>
-    <img class="bs-img" src="${BUTTY_IMG(lvl.img)}" alt="Butty, a mascote">
+    <img class="bs-img" src="${BUTTY_IMG(prog.cur.img)}" alt="Butty, a mascote">
     <div class="bs-text">
-      <h2>Como anda a Butty</h2>
-      <p class="diet-note">${radiant > 0 ? `Este mês já houve <b>${radiant}</b> dia${radiant === 1 ? '' : 's'} em que a Butty ficou radiante (exercício, sono e alimentação em dia).` : 'Ainda não houve nenhum dia completo este mês — exercício, sono e alimentação em dia deixam a Butty radiante.'}</p>
+      <h2>Como anda a Butty · Nível ${prog.level}</h2>
+      <div class="butty-xp-bar sm"><div class="butty-xp-fill" style="width:${prog.pct}%"></div></div>
+      <p class="diet-note">${radiant > 0 ? `Este mês já houve <b>${radiant}</b> dia${radiant === 1 ? '' : 's'} em pleno (exercício, sono e alimentação em dia), e já tens <b>${prog.xp} XP</b> ao todo.` : `Ainda não houve nenhum dia em pleno este mês. Tens <b>${prog.xp} XP</b> ao todo — cada dia soma mais.`}</p>
     </div>
   </div>`;
 }
