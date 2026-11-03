@@ -1630,6 +1630,7 @@ function openButtyIntro(onFinish) {
           <li style="--n:0"><span>${icon('dumbbell', 18)}</span>Faz exercício</li>
           <li style="--n:1"><span>${icon('moon', 18)}</span>Dorme bem (7h+)</li>
           <li style="--n:2"><span>${icon('leaf', 18)}</span>Come bem</li>
+          <li style="--n:3"><span>${icon('droplet', 18)}</span>Bebe água</li>
         </ul>
         <p class="wl-sub">Cada um soma XP, sobe o meu nível e desbloqueia uma cara nova minha. Vê o teu progresso sempre que quiseres na aba Início.</p>
       </div>`;
@@ -1885,6 +1886,7 @@ function renderPerfil() {
       <div class="form-row">
         <div class="field"><label for="pf-gender">Género</label>
           <select id="pf-gender"><option value="">Escolher…</option>${GENDERS.map((g) => `<option${sel(g, p.gender)}>${g}</option>`).join('')}</select></div>
+        <div class="field"><label for="pf-height">Altura (cm)</label><input type="number" id="pf-height" inputmode="decimal" min="100" max="250" step="any" value="${p.height_cm || ''}"></div>
       </div>
       <div class="field-title">Data de nascimento</div>
       ${birthSelects(p.birth)}
@@ -1939,6 +1941,8 @@ async function saveProfile(btn) {
     if (Number(bd) > daysIn(Number(by), Number(bm))) { flash.textContent = 'Essa data de nascimento não existe. Confirma o dia.'; return; }
     birth = `${by}-${pad2(bm)}-${pad2(bd)}`;
   }
+  const heightVal = val('pf-height');
+  if (heightVal && !(Number(heightVal) >= 100 && Number(heightVal) <= 250)) { flash.textContent = 'Confirma a altura (entre 100 e 250 cm).'; return; }
   const status = $('pf-status').value;
   const cycle = { status };
   if (status === 'cycle') {
@@ -1957,7 +1961,7 @@ async function saveProfile(btn) {
     if (lmp && !pregnancyInfo({ status, last_period: lmp }, today())) { flash.textContent = pregnancyPreview(lmp); return; }
     if (lmp) cycle.last_period = lmp;
   }
-  const data = { ...profileOf(), first_name: val('pf-first'), last_name: val('pf-last'), gender: $('pf-gender').value, birth, cycle };
+  const data = { ...profileOf(), first_name: val('pf-first'), last_name: val('pf-last'), gender: $('pf-gender').value, height_cm: heightVal ? Number(heightVal) : null, birth, cycle };
   btn.disabled = true;
   const [cx, cy] = centerOf(btn);
   try {
@@ -2611,7 +2615,7 @@ function showLogin() {
 // ---------- criar conta própria ----------
 function showRegister(inviteCode = '') {
   splashEl.classList.add('pin-mode');
-  const reg = { step: 1, code: inviteCode, username: '', password: '', first: '', last: '', gender: '', bd: '', bm: '', by: '', objective: '', weight: '', fat: '', muscle: '' };
+  const reg = { step: 1, code: inviteCode, username: '', password: '', first: '', last: '', gender: '', bd: '', bm: '', by: '', objective: '', weight: '', height: '' };
 
   const stepHtml = () => {
     if (reg.step === 1) return `
@@ -2640,17 +2644,17 @@ function showRegister(inviteCode = '') {
       <div class="login-sub">Passo 3 de 3 · Opcional. A seguir fazemos-te umas perguntas para montar o teu plano</div>
       <div class="lf"><span>Medidas de hoje (opcional)</span>
         <div class="rg-meas">
+          <label class="rg-m"><small>Altura (cm)</small><input id="rg-height" inputmode="decimal" value="${esc(reg.height)}"></label>
           <label class="rg-m"><small>Peso (kg)</small><input id="rg-weight" inputmode="decimal" value="${esc(reg.weight)}"></label>
-          <label class="rg-m"><small>Gordura (%)</small><input id="rg-fat" inputmode="decimal" value="${esc(reg.fat)}"></label>
-          <label class="rg-m"><small>Músculo (kg)</small><input id="rg-muscle" inputmode="decimal" value="${esc(reg.muscle)}"></label>
-        </div></div>`;
+        </div></div>
+      <p class="footnote">O resto das tuas medições (gordura, massa muscular, etc.) completas depois dentro da app, na aba Progresso.</p>`;
   };
 
   const read = () => {
     const v = (id) => { const el = $(id); return el ? el.value.trim() : null; };
     if (reg.step === 1) { reg.code = v('rg-code'); reg.username = v('rg-user'); reg.password = $('rg-pass').value; }
     if (reg.step === 2) { reg.first = v('rg-first'); reg.last = v('rg-last'); reg.gender = v('rg-gender'); reg.bd = v('rg-bd'); reg.bm = v('rg-bm'); reg.by = v('rg-by'); }
-    if (reg.step === 3) { reg.weight = v('rg-weight'); reg.fat = v('rg-fat'); reg.muscle = v('rg-muscle'); }
+    if (reg.step === 3) { reg.weight = v('rg-weight'); reg.height = v('rg-height'); }
   };
   const num = (s) => Number(String(s).replace(',', '.'));
 
@@ -2668,7 +2672,7 @@ function showRegister(inviteCode = '') {
       }
     }
     if (reg.step === 3) {
-      const rng = [[reg.weight, 20, 400, 'peso'], [reg.fat, 1, 80, 'gordura corporal'], [reg.muscle, 5, 200, 'massa muscular']];
+      const rng = [[reg.weight, 20, 400, 'peso'], [reg.height, 100, 250, 'altura']];
       for (const [val, lo, hi, nome] of rng) if (val && !(num(val) >= lo && num(val) <= hi)) return `Confirma o valor de ${nome} (entre ${lo} e ${hi}).`;
     }
     return '';
@@ -2698,11 +2702,9 @@ function showRegister(inviteCode = '') {
       const btn = $('rg-next');
       btn.disabled = true;
       err.textContent = 'A criar a tua conta…';
-      const profile = { first_name: reg.first, last_name: reg.last, gender: reg.gender, birth: reg.bd ? `${reg.by}-${pad2(reg.bm)}-${pad2(reg.bd)}` : null, new_account: true };
+      const profile = { first_name: reg.first, last_name: reg.last, gender: reg.gender, birth: reg.bd ? `${reg.by}-${pad2(reg.bm)}-${pad2(reg.bd)}` : null, height_cm: reg.height ? num(reg.height) : null, new_account: true };
       const meas = {};
       if (reg.weight) meas.weight = num(reg.weight);
-      if (reg.fat) meas.body_fat = num(reg.fat);
-      if (reg.muscle) meas.muscle = num(reg.muscle);
       try {
         const out = await api.register(reg.username, reg.password, reg.code, profile, Object.keys(meas).length ? meas : null);
         try { localStorage.setItem(LAST_NUMBER_KEY, reg.username); } catch { /* ignora */ }
