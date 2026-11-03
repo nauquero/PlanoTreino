@@ -14,6 +14,7 @@ import { restBgInit, restBgUpdate, restBgDone, restBgStop } from './rest-bg.js';
 import { MUSCLES, MUSCLE_LABEL, OBJECTIVES, OBJECTIVE_KEYS, OBJECTIVE_PLAN, planOf, quoteOf, greetingOf, cardioLabel, sportLabel } from './plan.js';
 import { openWelcome, WELCOME_PAGES, EDIT_PAGES, OBJECTIVE_PAGES } from './welcome.js';
 import { GENDERS, STATUSES, PHASES as CYCLE_PHASES, cycleDayInfo, lateDays, nextPeriod, pregnancyInfo, ageOf, diffDays } from './cycle.js';
+import { BUTTY_EYE_OPTIONS, BUTTY_DEFAULT_EYE, BUTTY_DEFAULT_BOW, buttySrc, setButtyColors, getButtyColors, warmButtyCache, previewButty } from './butty.js';
 
 // ---------- estado ----------
 const state = {
@@ -96,6 +97,8 @@ function applyData(out) {
   state.data.logs = out.logs;
   state.data.gymDays = new Set(out.gym_days);
   state.data.profile = out.profile || {};
+  const butty = state.data.profile.butty || {};
+  setButtyColors(butty.eye, butty.bow);
   state.data.sleep = out.sleep || [];
   state.data.moods = out.moods || [];
   state.data.meals = out.meals || [];
@@ -1204,7 +1207,7 @@ function weekStripHtml() {
 }
 
 // ---------- Butty ----------
-const BUTTY_IMG = (name) => `icons/butty/${name}.webp`;
+const BUTTY_IMG = buttySrc;
 
 function buttyPillars() {
   const t = today();
@@ -1297,6 +1300,7 @@ function buttyHtml() {
     { ok: mealOk, label: 'Comer bem', page: 'alimentacao', note: mealEntry ? MEAL_LABELS[mealEntry.ate] : 'Por registar' }
   ];
   return `<div class="card butty-card tilt">
+    <span class="fluffy tr" aria-hidden="true"></span>
     <div class="butty-head">
       <img class="butty-img" src="${BUTTY_IMG(prog.cur.img)}" alt="Butty, a mascote">
       <div class="butty-text">
@@ -1330,6 +1334,7 @@ function todayMood() { return state.data.moods.find((m) => m.day === today()); }
 function moodCheckinHtml() {
   const existing = todayMood();
   return `<div class="card mood-card">
+    <span class="fluffy tl" aria-hidden="true"></span>
     <h2>Como te sentiste hoje?</h2>
     <div class="mood-row" role="radiogroup" aria-label="Como te sentiste hoje?">
       ${MOOD_FACES.map((m, i) => `<button type="button" class="mood-btn${existing && Number(existing.mood) === i + 1 ? ' on' : ''}" data-action="save-mood" data-mood="${i + 1}" role="radio" aria-checked="${!!existing && Number(existing.mood) === i + 1}" aria-label="${esc(m.label)}">
@@ -1417,6 +1422,7 @@ function renderInicio() {
   pageEl.innerHTML = `
     <div class="card home-hero tilt">
       <span class="hh-spark s1" aria-hidden="true">${icon('sparkles', 18)}</span><span class="hh-spark s2" aria-hidden="true">${icon('sparkles', 12)}</span><span class="hh-spark s3" aria-hidden="true">${icon('star', 11)}</span>
+      <span class="fluffy bl" aria-hidden="true"></span>
       <div class="hh-date">${esc(dateLabel)}</div>
       <h2 class="hh-title">${greetingOf(now.getHours())}, ${esc(displayName())}!</h2>
       <p class="hh-quote">“${esc(quoteOf(t))}”</p>
@@ -1525,6 +1531,174 @@ function suggestToday() {
   if (!best) return null;
   const since = best.d ? diffDays(today(), best.d) : null;
   return { key: best.key, label: MUSCLE_LABEL[best.key] || groupLabel(best.key), since };
+}
+
+// ---------- Butty: apresentação interativa (conta nova) ----------
+function openButtyIntro(onFinish) {
+  const root = $('welcome');
+  const appEl = $('app');
+  const splashEl2 = $('splash');
+  const st = { eye: BUTTY_DEFAULT_EYE, bow: BUTTY_DEFAULT_BOW };
+  const steps = ['ola', 'xp', 'customiza', 'pronto'];
+  let idx = 0, dir = 1, previewTimer = 0, saving = false;
+  const opener = document.activeElement;
+
+  root.hidden = false;
+  root.classList.remove('leaving');
+  appEl.inert = true; splashEl2.inert = true;
+  document.body.classList.add('wl-open');
+
+  const stepBody = (key) => {
+    if (key === 'ola') return `
+      <div class="wl-hero bi-hero">
+        <div class="bi-img-wrap big"><div class="bi-glow" aria-hidden="true"></div><img class="bi-hero-img" src="${BUTTY_IMG('face-wink')}" alt="Butty"></div>
+        <h2 class="wl-h" tabindex="-1">Olá, eu sou a Butty! 🦌💗</h2>
+        <p class="wl-sub">A partir de agora vou crescer contigo. Quanto mais cuidares de ti, mais feliz eu fico.</p>
+      </div>`;
+    if (key === 'xp') return `
+      <div class="wl-hero bi-hero">
+        <div class="bi-img-wrap"><div class="bi-glow" aria-hidden="true"></div><img class="bi-hero-img" src="${BUTTY_IMG('face-laugh')}" alt="Butty"></div>
+        <h2 class="wl-h" tabindex="-1">Como é que eu cresço?</h2>
+        <p class="wl-sub">Todos os dias que cuidares de ti, eu ganho XP — para sempre.</p>
+        <ul class="wl-feats bi-feats">
+          <li style="--n:0"><span>${icon('dumbbell', 18)}</span>Faz exercício</li>
+          <li style="--n:1"><span>${icon('moon', 18)}</span>Dorme bem (7h+)</li>
+          <li style="--n:2"><span>${icon('leaf', 18)}</span>Come bem</li>
+        </ul>
+        <p class="wl-sub">Cada um soma XP, sobe o meu nível e desbloqueia uma cara nova minha. Vê o teu progresso sempre que quiseres na aba Início.</p>
+      </div>`;
+    if (key === 'customiza') return `
+      <h2 class="wl-h" tabindex="-1">Veste a tua Butty</h2>
+      <p class="wl-sub">Escolhe a cor dos olhos e do laço. Podes mudar sempre que quiseres, no Perfil.</p>
+      <div class="bi-img-wrap"><div class="bi-glow" aria-hidden="true"></div><img class="bi-hero-img" id="bi-preview" src="${BUTTY_IMG('face-wink')}" alt="A tua Butty"></div>
+      <div class="bi-section">
+        <div class="bi-label">Cor dos olhos</div>
+        <div class="bi-eyes" role="radiogroup" aria-label="Cor dos olhos">
+          ${BUTTY_EYE_OPTIONS.map((o) => `<button type="button" class="bi-eye-swatch${st.eye === o.hex ? ' on' : ''}" data-eye="${o.hex}" style="--sw:${o.hex}" role="radio" aria-checked="${st.eye === o.hex}"><span class="bi-dot" aria-hidden="true"></span>${esc(o.label)}</button>`).join('')}
+        </div>
+      </div>
+      <div class="bi-section">
+        <div class="bi-label">Cor do laço</div>
+        <div class="bi-bow-row">
+          <input type="color" id="bi-bow" value="${st.bow}" aria-label="Cor do laço">
+          <span class="bi-bow-hint">Toca para escolheres qualquer cor</span>
+        </div>
+      </div>`;
+    return `
+      <div class="wl-hero wl-done bi-hero">
+        <div class="bi-img-wrap big"><div class="bi-glow" aria-hidden="true"></div><img class="bi-hero-img" id="bi-done-img" src="${BUTTY_IMG('face-laugh')}" alt="A tua Butty"></div>
+        <h2 class="wl-h" tabindex="-1">A tua Butty está pronta!</h2>
+        <p class="wl-sub">Agora é só cuidares das duas. Vamos ao resto do teu plano?</p>
+      </div>`;
+  };
+
+  root.innerHTML = `
+    <div class="wl-bg" aria-hidden="true"><i class="wl-b1"></i><i class="wl-b2"></i><i class="wl-b3"></i></div>
+    <div class="wl-panel" role="dialog" aria-modal="true" aria-labelledby="bi-title">
+      <div class="wl-top">
+        <div class="wl-prog" role="progressbar" aria-valuemin="1" aria-valuemax="${steps.length}" aria-valuenow="1"><i></i></div>
+        <div class="wl-step" id="bi-title"></div>
+        <button type="button" class="wl-close" id="bi-close" aria-label="Saltar apresentação">${icon('x', 18)}</button>
+      </div>
+      <div class="wl-stage"><div class="wl-page" id="bi-page"></div></div>
+      <div class="wl-nav">
+        <button type="button" class="rg-back" id="bi-back">Voltar</button>
+        <button type="button" class="save-btn" id="bi-next">Seguinte</button>
+      </div>
+    </div>`;
+  const pageEl2 = root.querySelector('#bi-page');
+  const nextBtn = root.querySelector('#bi-next');
+  const backBtn = root.querySelector('#bi-back');
+
+  const draw = () => {
+    const key = steps[idx];
+    pageEl2.className = `wl-page ${dir > 0 ? 'in-next' : 'in-back'}`;
+    pageEl2.innerHTML = stepBody(key);
+    void pageEl2.offsetWidth;
+    root.querySelector('.wl-prog i').style.width = `${((idx + 1) / steps.length) * 100}%`;
+    root.querySelector('.wl-prog').setAttribute('aria-valuenow', String(idx + 1));
+    root.querySelector('#bi-title').textContent = `${idx + 1}/${steps.length}`;
+    backBtn.hidden = idx === 0;
+    const last = idx === steps.length - 1;
+    nextBtn.textContent = last ? 'Vamos lá!' : key === 'ola' ? 'Conhecer a Butty' : 'Seguinte';
+    if (key === 'ola' || key === 'customiza') {
+      setTimeout(() => { const w = pageEl2.querySelector('.bi-img-wrap'); if (w) { const r = w.getBoundingClientRect(); sparkle(r.left + r.width / 2, r.top + r.height / 2, 10); } }, 250);
+    }
+    if (key === 'pronto') {
+      setTimeout(() => { const w = pageEl2.querySelector('.bi-img-wrap'); if (w) { const r = w.getBoundingClientRect(); burst(r.left + r.width / 2, r.top + r.height / 2, 50); popDone(); } }, 300);
+    }
+    const h = pageEl2.querySelector('.wl-h');
+    if (h) h.focus({ preventScroll: true });
+    root.querySelector('.wl-stage').scrollTop = 0;
+  };
+
+  const updatePreview = () => {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(async () => {
+      const img = root.querySelector('#bi-preview');
+      if (!img) return;
+      img.src = await previewButty('face-wink', st.eye, st.bow);
+    }, 60);
+  };
+
+  pageEl2.addEventListener('click', (e) => {
+    const sw = e.target.closest('.bi-eye-swatch');
+    if (sw) {
+      st.eye = sw.dataset.eye;
+      pageEl2.querySelectorAll('.bi-eye-swatch').forEach((b) => { const on = b === sw; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
+      updatePreview();
+      haptic([12]);
+    }
+  });
+  pageEl2.addEventListener('input', (e) => {
+    if (e.target.id === 'bi-bow') { st.bow = e.target.value; updatePreview(); }
+  });
+
+  const finish = () => {
+    document.removeEventListener('keydown', onKey, true);
+    root.classList.add('leaving');
+    setTimeout(() => {
+      root.hidden = true; root.classList.remove('leaving'); root.innerHTML = '';
+      appEl.inert = false; splashEl2.inert = false;
+      document.body.classList.remove('wl-open');
+      if (opener && opener.focus && document.contains(opener)) opener.focus({ preventScroll: true });
+      if (onFinish) onFinish();
+    }, 380);
+  };
+
+  const save = async () => {
+    saving = true;
+    nextBtn.disabled = true;
+    try {
+      const data = { ...profileOf(), butty: { eye: st.eye, bow: st.bow } };
+      await api.setProfile(uid(), state.pin, data);
+      state.data.profile = data;
+      setButtyColors(st.eye, st.bow);
+      await warmButtyCache(() => render());
+    } catch { /* fica com a cor por omissão se falhar */ }
+    saving = false;
+    finish();
+  };
+
+  nextBtn.addEventListener('click', () => {
+    if (saving) return;
+    if (idx === steps.length - 1) { save(); return; }
+    idx++; dir = 1; draw();
+  });
+  backBtn.addEventListener('click', () => { if (saving || idx === 0) return; idx--; dir = -1; draw(); });
+  root.querySelector('#bi-close').addEventListener('click', () => { if (!saving) finish(); });
+
+  function onKey(e) {
+    if (e.key === 'Escape' && !saving) { e.preventDefault(); finish(); return; }
+    if (e.key !== 'Tab') return;
+    const f = [...root.querySelectorAll('button:not([disabled]):not([hidden]), input:not([disabled])')].filter((x) => x.offsetParent !== null);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+  document.addEventListener('keydown', onKey, true);
+  draw();
 }
 
 function startWelcome(mode = 'edit') {
@@ -1679,6 +1853,63 @@ function buttyAchievementsHtml() {
   </div>`;
 }
 
+let buttyEdit = null;
+
+function buttyCustomizeCardHtml() {
+  if (!buttyEdit) buttyEdit = { ...getButtyColors() };
+  return `<div class="card">
+    <h2>${icon('sparkles', 18)} Personalizar a Butty</h2>
+    <div class="bi-img-wrap sm"><div class="bi-glow" aria-hidden="true"></div><img class="bi-hero-img" id="bc-preview" src="${BUTTY_IMG('face-wink')}" alt="A tua Butty"></div>
+    <div class="bi-section">
+      <div class="bi-label">Cor dos olhos</div>
+      <div class="bi-eyes" role="radiogroup" aria-label="Cor dos olhos" id="bc-eyes">
+        ${BUTTY_EYE_OPTIONS.map((o) => `<button type="button" class="bi-eye-swatch${buttyEdit.eye === o.hex ? ' on' : ''}" data-action="bc-eye" data-hex="${o.hex}" style="--sw:${o.hex}" role="radio" aria-checked="${buttyEdit.eye === o.hex}"><span class="bi-dot" aria-hidden="true"></span>${esc(o.label)}</button>`).join('')}
+      </div>
+    </div>
+    <div class="bi-section">
+      <div class="bi-label">Cor do laço</div>
+      <div class="bi-bow-row"><input type="color" id="bc-bow" value="${buttyEdit.bow}" aria-label="Cor do laço"><span class="bi-bow-hint">Toca para escolheres qualquer cor</span></div>
+    </div>
+    <button class="save-btn" data-action="save-butty">Guardar aparência</button>
+    <div class="saved-flash" id="bc-flash"></div>
+  </div>`;
+}
+
+let buttyPreviewTimer = 0;
+function updateButtyEditPreview() {
+  clearTimeout(buttyPreviewTimer);
+  buttyPreviewTimer = setTimeout(async () => {
+    const img = $('bc-preview');
+    if (!img) return;
+    img.src = await previewButty('face-wink', buttyEdit.eye, buttyEdit.bow);
+  }, 60);
+}
+
+function pickButtyEye(btn) {
+  buttyEdit.eye = btn.dataset.hex;
+  $('bc-eyes').querySelectorAll('.bi-eye-swatch').forEach((b) => { const on = b === btn; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
+  updateButtyEditPreview();
+}
+
+async function saveButty(btn) {
+  btn.disabled = true;
+  const [cx, cy] = centerOf(btn);
+  try {
+    const data = { ...profileOf(), butty: { eye: buttyEdit.eye, bow: buttyEdit.bow } };
+    await api.setProfile(uid(), state.pin, data);
+    state.data.profile = data;
+    setButtyColors(buttyEdit.eye, buttyEdit.bow);
+    await warmButtyCache(() => {});
+    render();
+    flashOk($('bc-flash'), 'Aparência guardada!');
+    burst(cx, cy, 28);
+    popSuccess();
+  } catch (e) {
+    btn.disabled = false;
+    toast(errorMessage(e.code));
+  }
+}
+
 function renderPerfil() {
   const p = profileOf();
   const c = p.cycle || {};
@@ -1688,6 +1919,7 @@ function renderPerfil() {
   pageEl.innerHTML = `
     ${perfilHeroHtml()}
     ${buttySummaryHtml()}
+    ${buttyCustomizeCardHtml()}
     ${buttyAchievementsHtml()}
     ${planCardHtml()}
     <div class="card" id="profile-form">
@@ -2313,6 +2545,8 @@ function onClick(ev) {
     case 'save-profile': saveProfile(el); return;
     case 'period-today': periodStartedToday(el); return;
     case 'toggle-plan-card': state.showPlanCard = !state.showPlanCard; render(); return;
+    case 'bc-eye': pickButtyEye(el); return;
+    case 'save-butty': saveButty(el); return;
     case 'cycle-day': state.cycleDay = d.date; render(); return;
     case 'edit-log':
       state.editingLog = Number(d.id); state.openExercise = d.ex; state.confirm = null;
@@ -2346,6 +2580,7 @@ pageEl.addEventListener('input', (e) => {
     $('sl-calc').innerHTML = sleepCalcText($('sl-bed').value, $('sl-wake').value, null);
     return;
   }
+  if (e.target.id === 'bc-bow') { buttyEdit.bow = e.target.value; updateButtyEditPreview(); return; }
   if (e.target.id !== 'm-weight' || !isGaby()) return;
   const bmi = $('m-bmi');
   const w = Number(e.target.value);
@@ -2558,9 +2793,12 @@ async function startSession(profile, pin) {
   $('app').hidden = false;
   render(true);
   window.scrollTo(0, 0);
+  warmButtyCache(() => render());
   if (!outdated && !goalFor(monthKeyOf(new Date()))) setTimeout(() => toast('Novo mês, nova meta! Define-a na aba Progresso.'), 900);
 
-  if (profileOf().new_account && !planCfg().done && !isGaby()) startWelcome('first'); // conta nova: boas-vindas logo
+  if (profileOf().new_account && !planCfg().done && !isGaby()) {
+    openButtyIntro(() => startWelcome('first')); // conta nova: conhece a Butty e depois as boas-vindas do plano
+  }
   splashEl.classList.add('leaving');
   clearTimeout(leaveTimer);
   leaveTimer = setTimeout(() => { splashEl.hidden = true; splashEl.classList.remove('leaving'); }, 520);
@@ -2570,6 +2808,7 @@ function logout() {
   rest.stop();
   state.user = null;
   state.pin = null;
+  buttyEdit = null;
   try { localStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(SESSION_KEY); } catch { /* ignora */ }
   clearTimeout(leaveTimer);
   $('app').hidden = true;

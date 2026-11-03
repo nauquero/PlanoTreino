@@ -705,7 +705,7 @@ button { font-family:inherit; color:inherit; }
 .group-btn.more { background:transparent; border:1.5px dashed #D9C2CF; box-shadow:none; color:var(--soft); }
 
 /* ----- páginas de boas-vindas ----- */
-.welcome { position:fixed; inset:0; z-index:200; display:flex; justify-content:center; background:linear-gradient(160deg,#FCEFF5 0%,#F1EAF9 55%,#EAF6F1 100%); animation:wl-in .5s var(--ease) both; }
+.welcome { position:fixed; inset:0; z-index:210; display:flex; justify-content:center; background:linear-gradient(160deg,#FCEFF5 0%,#F1EAF9 55%,#EAF6F1 100%); animation:wl-in .5s var(--ease) both; }
 .welcome.leaving { animation:wl-out .38s ease both; }
 @keyframes wl-in { from { opacity:0; transform:scale(1.03); } }
 @keyframes wl-out { to { opacity:0; transform:scale(.98); } }
@@ -848,7 +848,7 @@ body.wl-open { overflow:hidden; }
 .meal-btn.on { background:linear-gradient(135deg,#DDF2E9,var(--mint)); border-color:transparent; color:var(--mintDark); box-shadow:0 6px 14px rgba(46,110,86,.18); }
 
 /* ---------- Butty ---------- */
-.butty-card { background:linear-gradient(135deg,rgba(251,220,196,.5),rgba(245,198,216,.4)); }
+.butty-card { position:relative; background:linear-gradient(135deg,rgba(251,220,196,.5),rgba(245,198,216,.4)); }
 .butty-head { position:relative; display:flex; align-items:center; gap:14px; margin-bottom:12px; }
 .butty-head::before { content:''; position:absolute; left:2px; top:50%; width:92px; height:92px; transform:translateY(-50%); background:radial-gradient(circle, rgba(255,255,255,.95) 0%, rgba(255,241,246,.6) 45%, rgba(255,241,246,0) 72%); filter:blur(2px); z-index:0; }
 .butty-img { position:relative; z-index:1; width:76px; height:76px; object-fit:contain; flex-shrink:0; filter:drop-shadow(0 0 10px rgba(255,255,255,.9)) drop-shadow(0 6px 10px rgba(181,121,142,.25)); animation:rise .5s var(--ease) both; }
@@ -892,9 +892,49 @@ body.wl-open { overflow:hidden; }
 .bs-dots span { margin-right:6px; }
 
 /* ---------- Como te sentiste hoje? ---------- */
+.mood-card { position:relative; }
 .mood-row { display:flex; gap:6px; justify-content:space-between; }
 .mood-btn { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 2px 7px; border-radius:16px; border:1.5px solid var(--line); background:rgba(255,255,255,.7); font-family:inherit; font-size:9.5px; font-weight:600; color:var(--soft); cursor:pointer; transition:all .25s var(--ease); }
 .mood-btn img { width:38px; height:38px; object-fit:contain; filter:drop-shadow(0 0 7px rgba(255,255,255,.85)); }
 .mood-btn:active { transform:scale(.92); }
 .mood-btn.on { background:linear-gradient(135deg,rgba(245,198,216,.9),rgba(217,207,240,.6)); border-color:transparent; color:var(--pinkDeep); box-shadow:0 6px 14px rgba(181,121,142,.28); }
 .ex-confirm { margin:4px 8px 0; animation:rise .35s var(--ease) both; }
+
+/* ---------- Butty: apresentação e personalização ---------- */
+.bi-hero { text-align:center; }
+.bi-img-wrap { position:relative; width:120px; height:120px; margin:4px auto 14px; display:grid; place-items:center; }
+.bi-img-wrap.big { width:150px; height:150px; }
+.bi-img-wrap.sm { width:92px; height:92px; margin:4px auto 10px; }
+.bi-glow { position:absolute; inset:-10%; border-radius:50%; background:radial-gradient(circle, rgba(255,255,255,.95) 0%, rgba(255,241,246,.6) 45%, rgba(255,241,246,0) 72%); filter:blur(3px); animation:float 3.6s ease-in-out infinite; }
+.bi-hero-img { position:relative; z-index:1; width:100%; height:100%; object-fit:contain; filter:drop-shadow(0 0 14px rgba(255,255,255,.95)) drop-shadow(0 8px 14px rgba(181,121,142,.25)); }
+.bi-feats { margin-top:14px; }
+.bi-section { margin:16px 0; text-align:left; }
+.bi-label { font-weight:700; font-size:12.5px; color:var(--ink); margin-bottom:8px; }
+.bi-eyes { display:flex; gap:7px; flex-wrap:wrap; }
+.bi-eye-swatch { flex:1; min-width:70px; display:flex; flex-direction:column; align-items:center; gap:5px; padding:10px 6px; border-radius:16px; border:1.5px solid var(--line); background:rgba(255,255,255,.75); font-family:inherit; font-size:10.5px; font-weight:600; color:var(--soft); cursor:pointer; transition:all .25s var(--ease); }
+.bi-eye-swatch .bi-dot { width:22px; height:22px; border-radius:50%; background:var(--sw); box-shadow:inset 0 0 0 2px rgba(255,255,255,.6); }
+.bi-eye-swatch:active { transform:scale(.94); }
+.bi-eye-swatch.on { border-color:transparent; background:linear-gradient(135deg,rgba(245,198,216,.5),rgba(217,207,240,.4)); color:var(--ink); box-shadow:0 6px 14px rgba(181,121,142,.22); }
+.bi-bow-row { display:flex; align-items:center; gap:12px; padding:10px 14px; border-radius:16px; background:rgba(255,255,255,.75); border:1.5px solid var(--line); }
+.bi-bow-row input[type="color"] { width:42px; height:42px; border:none; border-radius:12px; padding:0; background:none; cursor:pointer; flex-shrink:0; }
+.bi-bow-row input[type="color"]::-webkit-color-swatch-wrapper { padding:0; border-radius:12px; }
+.bi-bow-row input[type="color"]::-webkit-color-swatch { border:2px solid #fff; border-radius:12px; }
+.bi-bow-hint { font-size:11.5px; color:var(--soft); }
+
+/* ---------- Fluffy: nuvenzinhas decorativas, ao longo da app ---------- */
+.fluffy { position:absolute; pointer-events:none; z-index:0; opacity:.9; }
+.fluffy::before, .fluffy::after {
+  content:''; position:absolute; border-radius:50%; background:#fff;
+  box-shadow:
+    14px 4px 0 -2px rgba(255,255,255,.9),
+    -12px 6px 0 -3px rgba(255,255,255,.85),
+    4px -8px 0 -4px rgba(255,255,255,.8);
+  filter:blur(.3px);
+  animation:fluffFloat 5.5s ease-in-out infinite;
+}
+.fluffy::before { width:20px; height:20px; top:0; left:0; }
+.fluffy::after { width:13px; height:13px; top:6px; left:22px; animation-delay:.6s; }
+.fluffy.tr { top:10px; right:14px; }
+.fluffy.bl { bottom:10px; left:14px; }
+.fluffy.tl { top:10px; left:14px; }
+@keyframes fluffFloat { 0%,100% { transform:translateY(0) scale(1); } 50% { transform:translateY(-4px) scale(1.04); } }
