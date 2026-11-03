@@ -50,7 +50,9 @@ No Perfil cada pessoa escolhe o objetivo (hipertrofia, perda de gordura + hipert
 A aba Perfil guarda nome, apelido, género, data de nascimento e os dados do ciclo (última menstruação, duração do ciclo, gravidez, etc.). A aba Progresso mostra a fase do ciclo e o que esperar em cada dia. Para ativar corre `supabase/atualizar-perfil.sql` no SQL Editor (seguro repetir, não apaga dados).
 
 ### Butty, a mascote
-A aba "Alimentação" passou a chamar-se "Saúde" e agora também tem o registo do sono (horas de deitar/acordar e qualidade). Na aba Início aparece a Butty, a mascote da app: o seu humor reflete se já fizeste exercício, dormiste bem (7h+) e comeste bem hoje (registo rápido "Comi bem hoje?" na aba Saúde), e há também um check-in diário "Como te sentiste hoje?" com 5 estados de humor. Para ativar corre `supabase/atualizar-butty.sql` no SQL Editor (seguro repetir, não apaga dados).
+A aba "Alimentação" passou a chamar-se "Saúde" e agora também tem o registo do sono (horas de deitar/acordar e qualidade). Na aba Início aparece a Butty, a mascote da app: tem XP, nível e conquistas que sobem conforme fazes exercício, dormes bem (7h+) e comes bem (registo rápido "Comi bem hoje?" na aba Saúde), e há também um check-in diário "Como te sentiste hoje?" com 5 estados de humor. Para ativar corre `supabase/atualizar-butty.sql` no SQL Editor (seguro repetir, não apaga dados).
+
+Quem cria conta nova conhece a Butty numa apresentação interativa e pode logo escolher a cor dos olhos (castanho, preto, verde ou azul) e do laço (qualquer cor); dá para mudar sempre que quiseres na aba Perfil. A recolorização acontece no browser (nada de novo na base de dados) a partir de `icons/butty/masks/*.webp`, máscaras que marcam só a zona dos olhos e do laço em cada imagem.
 
 ### Treino da Gabriela
 Uma pessoa com o objetivo `emagrecimento` (ver `supabase/novo-utilizador.sql`) vê um treino diferente: plano de 12 semanas (5 de outubro a 27 de dezembro) a fazer em casa, 3 sessões por semana. O plano está em `js/gaby-data.js` e os vídeos do treino principal em `plano-principal.json`. Para as restantes pessoas nada muda.
