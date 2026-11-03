@@ -1246,20 +1246,20 @@ function buttyPillars() {
   const sleepOk = !!sleepEntry && Number(sleepEntry.hours) >= 7;
   const mealEntry = todayMeal();
   const mealOk = !!mealEntry && Number(mealEntry.ate) >= 1;
-  return { exerciseOk, sleepOk, mealOk, sleepEntry, mealEntry };
+  const waterEntry = todayWater();
+  const waterOk = !!waterEntry && waterEntry.ok === true;
+  return { exerciseOk, sleepOk, mealOk, sleepEntry, mealEntry, waterEntry, waterOk };
 }
 
-// Cada dia dá até 3 XP (exercício + dormir bem + comer bem). O XP acumula-se para sempre
-// e faz a Butty subir de nível, desbloqueando um visual novo dela em cada nível.
+// Cada dia dá até 4 XP (exercício + dormir bem + comer bem + beber água). O XP acumula-se
+// para sempre e faz a Butty subir de nível — é sempre a mesma Butty, só muda a expressão.
 const XP_LEVELS = [
   { xp: 0, img: 'face-sleepy', name: 'Butty bebé' },
   { xp: 6, img: 'face-shock', name: 'Butty curiosa' },
   { xp: 15, img: 'face-joy', name: 'Butty animada' },
   { xp: 28, img: 'face-love', name: 'Butty amorosa' },
   { xp: 45, img: 'face-wink', name: 'Butty convencida' },
-  { xp: 66, img: 'face-laugh', name: 'Butty radiante' },
-  { xp: 92, img: 'face-peek', name: 'Butty brincalhona' },
-  { xp: 125, img: 'body-full', name: 'Butty completa' }
+  { xp: 66, img: 'face-laugh', name: 'Butty radiante' }
 ];
 
 // Conta quantas vezes, ao longo do tempo, um registo bateu a melhor carga anterior desse exercício
@@ -1291,7 +1291,8 @@ function buttyXP() {
   const trainedDays = [...trainedDaySet()].filter((d) => d <= t).length;
   const sleepGood = state.data.sleep.filter((s) => s.day <= t && Number(s.hours) >= 7).length;
   const mealGood = state.data.meals.filter((m) => m.day <= t && Number(m.ate) >= 1).length;
-  return trainedDays + sleepGood + mealGood + buttyPRCount();
+  const waterGood = state.data.waters.filter((w) => w.day <= t && w.ok === true).length;
+  return trainedDays + sleepGood + mealGood + waterGood + buttyPRCount();
 }
 
 function buttyProgress() {
@@ -1307,10 +1308,11 @@ function buttyProgress() {
 function buttyStreak() {
   const sleepMap = new Map(state.data.sleep.map((s) => [s.day, s]));
   const mealMap = new Map(state.data.meals.map((m) => [m.day, m]));
+  const waterMap = new Map(state.data.waters.map((w) => [w.day, w]));
   const trainedSet = trainedDaySet();
   const perfect = (iso) => {
-    const sl = sleepMap.get(iso), me = mealMap.get(iso);
-    return trainedSet.has(iso) && !!sl && Number(sl.hours) >= 7 && !!me && Number(me.ate) >= 1;
+    const sl = sleepMap.get(iso), me = mealMap.get(iso), wa = waterMap.get(iso);
+    return trainedSet.has(iso) && !!sl && Number(sl.hours) >= 7 && !!me && Number(me.ate) >= 1 && !!wa && wa.ok === true;
   };
   let d = new Date();
   if (!perfect(isoDate(d))) d = addDaysLocal(d, -1);
@@ -1336,6 +1338,7 @@ function buttyBadges() {
 const BUTTY_DAY_NOTES = [
   'Ainda não cuidaste de nada disto hoje — cada coisa que fizeres soma XP para sempre.',
   'Vai indo bem — continua e ganha mais XP hoje.',
+  'Estás a meio caminho — continua assim.',
   'Quase lá! Mais uma coisa e fazes pleno hoje.',
   'Pleno hoje! Esse XP fica guardado no nível da Butty para sempre.'
 ];
@@ -1345,14 +1348,15 @@ function buttyBadgesHtml() {
 }
 
 function buttyHtml() {
-  const { exerciseOk, sleepOk, mealOk, sleepEntry, mealEntry } = buttyPillars();
-  const score = [exerciseOk, sleepOk, mealOk].filter(Boolean).length;
+  const { exerciseOk, sleepOk, mealOk, sleepEntry, mealEntry, waterOk, waterEntry } = buttyPillars();
+  const score = [exerciseOk, sleepOk, mealOk, waterOk].filter(Boolean).length;
   const prog = buttyProgress();
   const streak = buttyStreak();
   const rows = [
     { ok: exerciseOk, label: 'Exercício hoje', page: 'treino', note: exerciseOk ? 'Feito' : 'Ainda não' },
     { ok: sleepOk, label: 'Dormir bem (7h+)', page: 'alimentacao', note: sleepEntry ? fmtHours(sleepEntry.hours) : 'Por registar' },
-    { ok: mealOk, label: 'Comer bem', page: 'alimentacao', note: mealEntry ? MEAL_LABELS[mealEntry.ate] : 'Por registar' }
+    { ok: mealOk, label: 'Comer bem', page: 'alimentacao', note: mealEntry ? MEAL_LABELS[mealEntry.ate] : 'Por registar' },
+    { ok: waterOk, label: 'Beber água', page: 'alimentacao', note: waterEntry ? (waterEntry.ok ? 'Sim' : 'Ainda não') : 'Por registar' }
   ];
   return `<div class="card butty-card tilt">
     <span class="fluffy tr" aria-hidden="true"></span>
@@ -1838,7 +1842,7 @@ const SUBS = {
 };
 
 function buttySummaryHtml() {
-  const { exerciseOk, sleepOk, mealOk } = buttyPillars();
+  const { exerciseOk, sleepOk, mealOk, waterOk } = buttyPillars();
   const prog = buttyProgress();
   const dot = (ok) => `<span class="bs-dot${ok ? ' on' : ''}">${icon(ok ? 'check' : 'minus', 11)}</span>`;
   return `<div class="card butty-summary tilt" data-action="go-page" data-page="inicio">
@@ -1847,7 +1851,7 @@ function buttySummaryHtml() {
     <div class="bs-text">
       <h2>Nível ${prog.level} · ${esc(prog.cur.name)}</h2>
       <div class="butty-xp-bar sm"><div class="butty-xp-fill" style="width:${prog.pct}%"></div></div>
-      <div class="bs-dots">${dot(exerciseOk)}<span>Exercício</span>${dot(sleepOk)}<span>Sono</span>${dot(mealOk)}<span>Alimentação</span></div>
+      <div class="bs-dots">${dot(exerciseOk)}<span>Exercício</span>${dot(sleepOk)}<span>Sono</span>${dot(mealOk)}<span>Alimentação</span>${dot(waterOk)}<span>Água</span></div>
     </div>
   </div>`;
 }
@@ -2155,6 +2159,7 @@ function buttyMonthStats() {
   const todayIso = today();
   const sleepMap = new Map(state.data.sleep.map((s) => [s.day, s]));
   const mealMap = new Map(state.data.meals.map((x) => [x.day, x]));
+  const waterMap = new Map(state.data.waters.map((x) => [x.day, x]));
   const trainedSet = trainedDaySet();
   let radiant = 0;
   for (let d = 1; d <= daysInM; d++) {
@@ -2163,7 +2168,8 @@ function buttyMonthStats() {
     const ex = trainedSet.has(iso);
     const sl = sleepMap.get(iso); const slOk = !!sl && Number(sl.hours) >= 7;
     const me = mealMap.get(iso); const meOk = !!me && Number(me.ate) >= 1;
-    if (ex && slOk && meOk) radiant++;
+    const wa = waterMap.get(iso); const waOk = !!wa && wa.ok === true;
+    if (ex && slOk && meOk && waOk) radiant++;
   }
   return { radiant };
 }
