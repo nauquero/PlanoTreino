@@ -20,7 +20,7 @@ const state = {
   user: null,         // { id, name, focus, cardio, tone }
   pin: null,
   page: 'inicio',
-  sub: { progresso: 'resumo', perfil: 'dados' }, // sub-páginas: Progresso (resumo | medições) e Perfil (dados | medições)
+  sub: { progresso: 'resumo', perfil: 'dados', alimentacao: 'comida' }, // sub-páginas: Progresso (resumo | medições), Perfil (dados | medições) e Saúde (comida | sono)
   allGroups: false,   // mostra todos os grupos musculares, mesmo os que a pessoa não escolheu
   restDay: null,      // dia em que disse "hoje descanso"
   group: 'pernas',
@@ -39,6 +39,7 @@ const state = {
   editingGoal: false,
   cycleDay: null,
   sleepDate: null,
+  showPlanCard: false,
   data: { measurements: [], logs: [], gymDays: new Set(), profile: {}, sleep: [], moods: [], meals: [], custom: [], goals: new Map() }
 };
 
@@ -955,7 +956,6 @@ function renderAlimentacao() {
 
   pageEl.innerHTML = `
     ${mealCheckinHtml()}
-    ${sleepSectionHtml()}
     <div class="card hydration tilt">
       <h2>${icon('droplet', 18)} Hidratação</h2>
       ${waterHtml}
@@ -979,6 +979,10 @@ function renderAlimentacao() {
         </div>`).join('')}
       <p class="footnote">Valores de referência gerais, não substituem o acompanhamento de um nutricionista.</p>
     </div>`;
+}
+
+function renderSono() {
+  pageEl.innerHTML = sleepSectionHtml();
 }
 
 // ---------- Comi bem hoje? (check-in diário) ----------
@@ -1538,16 +1542,20 @@ function planCardHtml() {
   const p = planCfg();
   const o = OBJECTIVES[focusOf()] || OBJECTIVES.saude;
   const chips = (arr, fn, ic) => arr.length ? arr.map((x) => `<span class="plan-chip">${icon(ic, 13)}${esc(fn(x))}</span>`).join('') : '<span class="plan-none">Sem escolhas</span>';
+  const open = !!state.showPlanCard;
+  const toggleBtn = `<button class="link-btn" data-action="toggle-plan-card">${open ? 'Esconder' : 'Ver'}</button>`;
   if (isGaby()) {
     return `<div class="card" id="plan-card">
-      <h2>${icon('target', 18)} O meu objetivo</h2>
+      <div class="pm-head"><h2>${icon('target', 18)} O meu objetivo</h2>${toggleBtn}</div>
+      ${open ? `
       <p class="diet-note">O teu treino é o plano de 12 semanas definido para ti. O objetivo ajusta as sugestões de alimentação e as mensagens.</p>
       <div class="cy-block"><div class="dd-group-title">${esc(o[0])}</div><p>${esc(o[1])}</p></div>
-      <div class="plan-actions"><button class="save-btn alt" data-action="edit-objective">${icon('target', 16)} Alterar objetivo</button></div>
+      <div class="plan-actions"><button class="save-btn alt" data-action="edit-objective">${icon('target', 16)} Alterar objetivo</button></div>` : ''}
     </div>`;
   }
   return `<div class="card" id="plan-card">
-      <h2>${icon('sparkles', 18)} O meu plano</h2>
+      <div class="pm-head"><h2>${icon('sparkles', 18)} O meu plano</h2>${toggleBtn}</div>
+      ${open ? `
       <p class="diet-note">${p.done ? 'Estas são as escolhas que deram forma ao teu treino. Podes mudá-las quando quiseres.' : 'Ainda não personalizaste o teu plano. Responde a algumas perguntas e o treino passa a mostrar só o que te interessa.'}</p>
       ${p.done ? `
       <div class="plan-block"><div class="dd-group-title">Objetivo</div><div class="plan-chips"><span class="plan-chip strong">${icon(o[4], 13)}${esc(o[0])}</span></div></div>
@@ -1559,7 +1567,7 @@ function planCardHtml() {
       <div class="plan-actions">
         <button class="save-btn" data-action="${p.done ? 'edit-plan' : 'start-plan'}">${icon('sparkles', 16)} ${p.done ? 'Editar escolhas' : 'Personalizar o meu plano'}</button>
         <button class="save-btn alt" data-action="edit-objective">${icon('target', 16)} Alterar objetivo</button>
-      </div>
+      </div>` : ''}
     </div>`;
 }
 
@@ -1572,8 +1580,24 @@ function subTabsHtml(page, items) {
     </div>`;
 }
 const SUBS = {
-  progresso: [['resumo', 'Resumo', 'trend'], ['medicoes', 'Medições', 'activity']]
+  progresso: [['resumo', 'Resumo', 'trend'], ['medicoes', 'Medições', 'activity']],
+  alimentacao: [['comida', 'Alimentação', 'leaf'], ['sono', 'Sono', 'moon']]
 };
+
+function buttySummaryHtml() {
+  const { exerciseOk, sleepOk, mealOk } = buttyPillars();
+  const score = [exerciseOk, sleepOk, mealOk].filter(Boolean).length;
+  const lvl = BUTTY_LEVELS[score];
+  const dot = (ok) => `<span class="bs-dot${ok ? ' on' : ''}">${icon(ok ? 'check' : 'minus', 11)}</span>`;
+  return `<div class="card butty-summary tilt" data-action="go-page" data-page="inicio">
+    <div class="bs-glow" aria-hidden="true"></div>
+    <img class="bs-img" src="${BUTTY_IMG(lvl.img)}" alt="Butty, a mascote">
+    <div class="bs-text">
+      <h2>${esc(lvl.title)}</h2>
+      <div class="bs-dots">${dot(exerciseOk)}<span>Exercício</span>${dot(sleepOk)}<span>Sono</span>${dot(mealOk)}<span>Alimentação</span></div>
+    </div>
+  </div>`;
+}
 
 function renderPerfil() {
   const p = profileOf();
@@ -1583,6 +1607,7 @@ function renderPerfil() {
   const sel = (v, cur) => (v === cur ? ' selected' : '');
   pageEl.innerHTML = `
     ${perfilHeroHtml()}
+    ${buttySummaryHtml()}
     ${planCardHtml()}
     <div class="card" id="profile-form">
       <h2>${icon('user', 18)} Os meus dados</h2>
@@ -1860,6 +1885,41 @@ function dayDetailHtml(iso) {
       : `<button class="dd-toggle" data-action="toggle-day" data-date="${iso}">${marked ? 'Desmarcar dia de treino' : 'Marcar como dia de treino'}</button>`}`;
 }
 
+function buttyMonthStats() {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  const daysInM = new Date(y, m + 1, 0).getDate();
+  const todayIso = today();
+  const sleepMap = new Map(state.data.sleep.map((s) => [s.day, s]));
+  const mealMap = new Map(state.data.meals.map((x) => [x.day, x]));
+  const trainedSet = trainedDaySet();
+  let radiant = 0;
+  for (let d = 1; d <= daysInM; d++) {
+    const iso = `${y}-${pad2(m + 1)}-${pad2(d)}`;
+    if (iso > todayIso) break;
+    const ex = trainedSet.has(iso);
+    const sl = sleepMap.get(iso); const slOk = !!sl && Number(sl.hours) >= 7;
+    const me = mealMap.get(iso); const meOk = !!me && Number(me.ate) >= 1;
+    if (ex && slOk && meOk) radiant++;
+  }
+  return { radiant };
+}
+
+function buttyProgressHtml() {
+  const { radiant } = buttyMonthStats();
+  const { exerciseOk, sleepOk, mealOk } = buttyPillars();
+  const score = [exerciseOk, sleepOk, mealOk].filter(Boolean).length;
+  const lvl = BUTTY_LEVELS[score];
+  return `<div class="card butty-summary tilt" data-action="go-page" data-page="inicio">
+    <div class="bs-glow" aria-hidden="true"></div>
+    <img class="bs-img" src="${BUTTY_IMG(lvl.img)}" alt="Butty, a mascote">
+    <div class="bs-text">
+      <h2>Como anda a Butty</h2>
+      <p class="diet-note">${radiant > 0 ? `Este mês já houve <b>${radiant}</b> dia${radiant === 1 ? '' : 's'} em que a Butty ficou radiante (exercício, sono e alimentação em dia).` : 'Ainda não houve nenhum dia completo este mês — exercício, sono e alimentação em dia deixam a Butty radiante.'}</p>
+    </div>
+  </div>`;
+}
+
 function renderProgresso() {
   const year = state.calMonth.getFullYear(), month = state.calMonth.getMonth();
   const key = `${year}-${pad2(month + 1)}`;
@@ -1920,6 +1980,8 @@ function renderProgresso() {
       <div class="story-chips">${chips.join('')}</div>
       <div class="story-mission">${icon('target', 16)}<span>${esc(story.mission)}</span></div>
     </div>
+
+    ${buttyProgressHtml()}
 
     <div class="card">
       <div class="cal-summary">
@@ -2067,7 +2129,8 @@ function renderNav() {
 
 // Medições vive dentro de Progresso e de Perfil, como segunda página de cada uma
 const RENDERERS = {
-  inicio: renderInicio, treino: renderTreino, alimentacao: renderAlimentacao,
+  inicio: renderInicio, treino: renderTreino,
+  alimentacao: () => { if (state.sub.alimentacao === 'sono') renderSono(); else renderAlimentacao(); pageEl.insertAdjacentHTML('afterbegin', subTabsHtml('alimentacao', SUBS.alimentacao)); },
   progresso: () => { if (state.sub.progresso === 'medicoes') pageEl.innerHTML = medicaoHtml(); else renderProgresso(); pageEl.insertAdjacentHTML('afterbegin', subTabsHtml('progresso', SUBS.progresso)); },
   perfil: renderPerfil
 };
@@ -2169,6 +2232,7 @@ function onClick(ev) {
     case 'save-mood': saveMood(el); return;
     case 'save-profile': saveProfile(el); return;
     case 'period-today': periodStartedToday(el); return;
+    case 'toggle-plan-card': state.showPlanCard = !state.showPlanCard; render(); return;
     case 'cycle-day': state.cycleDay = d.date; render(); return;
     case 'edit-log':
       state.editingLog = Number(d.id); state.openExercise = d.ex; state.confirm = null;
@@ -2397,9 +2461,9 @@ async function startSession(profile, pin) {
   state.pin = pin;
   applyData(out);
   Object.assign(state, {
-    page: 'inicio', sub: { progresso: 'resumo', perfil: 'dados' }, allGroups: false, restDay: null, group: 'pernas', week: currentWeek(), session: pickDefaultSession(currentWeek()), metric: 'weight', openExercise: null, showMeanings: false,
+    page: 'inicio', sub: { progresso: 'resumo', perfil: 'dados', alimentacao: 'comida' }, allGroups: false, restDay: null, group: 'pernas', week: currentWeek(), session: pickDefaultSession(currentWeek()), metric: 'weight', openExercise: null, showMeanings: false,
     calMonth: startOfMonth(new Date()), selectedDay: null, editingLog: null, editingMeas: null, confirm: null,
-    addingExercise: false, editingGoal: false, cycleDay: null, sleepDate: null
+    addingExercise: false, editingGoal: false, cycleDay: null, sleepDate: null, showPlanCard: false
   });
   try { localStorage.setItem(SESSION_KEY, JSON.stringify({ profile, pin })); } catch { /* ignora */ }
 
