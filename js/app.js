@@ -2407,9 +2407,9 @@ async function startSession(profile, pin) {
   $('avatar').className = `avatar ${user.tone}`;
   paintHeader();
   $('edition-pill').hidden = !isGaby();
-  const outdated = !isDemo && out.version !== 5;
+  const outdated = !isDemo && out.version !== 6;
   $('demo-banner').innerHTML = `${icon('alert', 16)}<span>${outdated
-    ? 'Há novidades! Falta atualizar a base de dados: corre o ficheiro supabase/atualizar.sql no Supabase.'
+    ? 'Há novidades! Falta atualizar a base de dados: corre o ficheiro supabase/atualizar-butty.sql no Supabase.'
     : 'Modo demo: os dados ficam só neste dispositivo. Liga o Supabase (ver README) para os guardar online.'}</span>`;
   $('demo-banner').hidden = !(isDemo || outdated);
   $('app').hidden = false;
