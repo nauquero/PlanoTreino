@@ -56,6 +56,7 @@ const remote = {
   setMood: (profile, pin, entry) => rpc('set_mood', { p_profile: profile, p_pin: pin, p_entry: entry }),
   setMeal: (profile, pin, entry) => rpc('set_meal', { p_profile: profile, p_pin: pin, p_entry: entry }),
   setWater: (profile, pin, entry) => rpc('set_water', { p_profile: profile, p_pin: pin, p_entry: entry }),
+  setRest: (profile, pin, entry) => rpc('set_rest', { p_profile: profile, p_pin: pin, p_entry: entry }),
   setProfile: (profile, pin, data) => rpc('set_profile', { p_profile: profile, p_pin: pin, p_data: data }),
   addCustomExercise: (profile, pin, entry) => rpc('add_custom_exercise', { p_profile: profile, p_pin: pin, p_entry: entry }),
   deleteCustomExercise: (profile, pin, id) => rpc('delete_custom_exercise', { p_profile: profile, p_pin: pin, p_id: id }),
@@ -75,13 +76,14 @@ function todayIso() { const d = new Date(); return `${d.getFullYear()}-${pad2(d.
 function demoLoad(profile) {
   let d = null;
   try { const raw = localStorage.getItem(demoKey(profile)); if (raw) d = JSON.parse(raw); } catch { /* ignora */ }
-  if (!d) d = { measurements: [{ date: '2026-09-29', ...INITIAL }], logs: [], gym_days: [], profile: {}, sleep: [], moods: [], meals: [], waters: [], custom_exercises: [], goals: [] };
+  if (!d) d = { measurements: [{ date: '2026-09-29', ...INITIAL }], logs: [], gym_days: [], profile: {}, sleep: [], moods: [], meals: [], waters: [], rest_days: [], custom_exercises: [], goals: [] };
   d.goals = d.goals || [];
   d.profile = d.profile || {};
   d.sleep = d.sleep || [];
   d.moods = d.moods || [];
   d.meals = d.meals || [];
   d.waters = d.waters || [];
+  d.rest_days = d.rest_days || [];
   d.custom_exercises = d.custom_exercises || [];
   let next = d.logs.reduce((m, l) => Math.max(m, l.id || 0), 0);
   d.logs.forEach((l) => { if (!l.id) l.id = ++next; });
@@ -193,6 +195,13 @@ const demo = {
     noFuture(entry.day);
     const d = demoLoad(profile);
     d.waters = d.waters.filter((x) => x.day !== entry.day).concat({ day: entry.day, ok: entry.ok }).sort((a, b) => b.day.localeCompare(a.day));
+    demoSave(profile, d);
+    return { ok: true };
+  },
+  async setRest(profile, pin, entry) {
+    noFuture(entry.day);
+    const d = demoLoad(profile);
+    if (!d.rest_days.includes(entry.day)) d.rest_days = d.rest_days.concat(entry.day).sort();
     demoSave(profile, d);
     return { ok: true };
   },
