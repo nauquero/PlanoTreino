@@ -52,6 +52,8 @@ button { font-family:inherit; color:inherit; }
 .eyebrow { display:flex; flex-direction:column; line-height:1.25; }
 .eyebrow .hey { font-weight:700; font-size:16px; color:var(--pinkDark); }
 .brand-h1 { font-weight:700; font-size:18px; line-height:1.2; letter-spacing:-.01em; }
+.header-logo { height:20px; width:auto; opacity:.9; flex-shrink:0; }
+@media (max-width:360px) { .header-logo { display:none; } }
 .top-actions { display:flex; gap:8px; }
 .icon-btn { width:40px; height:40px; display:grid; place-items:center; border:1px solid var(--glassBorder); background:var(--glass); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-radius:14px; color:var(--pinkDark); cursor:pointer; box-shadow:0 4px 14px rgba(181,121,142,.12); transition:transform .15s var(--ease); }
 .icon-btn:active { transform:scale(.9); }
@@ -200,12 +202,11 @@ button { font-family:inherit; color:inherit; }
 #splash.leaving { opacity:0; transform:scale(1.05); pointer-events:none; }
 .splash-brand { text-align:center; }
 .brand-mark { border-radius:26px; box-shadow:0 14px 34px rgba(181,121,142,.34); margin-bottom:16px; animation:float 5s ease-in-out infinite; }
-#splash h1 { font-weight:700; font-size:27px; line-height:1.15; letter-spacing:-.02em; }
-#splash h1 span { background:linear-gradient(90deg,#A8587B,#7458B0); -webkit-background-clip:text; background-clip:text; color:transparent; }
+.brand-logo { display:block; height:68px; width:auto; max-width:100%; margin:0 auto; }
 .tagline { margin-top:8px; font-size:12.5px; font-weight:500; color:var(--soft); }
 #splash.pin-mode { gap:14px; }
 #splash.pin-mode .brand-mark { width:52px; height:52px; border-radius:18px; margin-bottom:8px; }
-#splash.pin-mode h1 { font-size:20px; }
+#splash.pin-mode .brand-logo { height:40px; }
 #splash.pin-mode .tagline { display:none; }
 #splash-inner { width:100%; display:flex; justify-content:center; }
 .splash-choices { display:flex; gap:14px; width:100%; max-width:380px; }
@@ -465,10 +466,6 @@ button { font-family:inherit; color:inherit; }
 .story, .goal-card.first { position:relative; }
 .story::after, .goal-card.first::after { content:''; position:absolute; inset:0; border-radius:inherit; pointer-events:none; box-shadow:0 0 36px 6px rgba(245,198,216,.7); opacity:0; animation:glowPulse 4.5s ease-in-out infinite; }
 @keyframes glowPulse { 50% { opacity:.9; } }
-
-/* título com brilho a passar */
-#splash h1 span { background-image:linear-gradient(90deg,#A8587B,#7458B0,#C2477D,#A8587B); background-size:250% 100%; animation:shimmerText 7s linear infinite; }
-@keyframes shimmerText { to { background-position:250% 0; } }
 
 /* água a ondular */
 .hydration { position:relative; overflow:hidden; }
