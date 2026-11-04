@@ -14,6 +14,7 @@ import { restBgInit, restBgUpdate, restBgDone, restBgStop } from './rest-bg.js';
 import { MUSCLES, MUSCLE_LABEL, OBJECTIVES, OBJECTIVE_KEYS, OBJECTIVE_PLAN, planOf, quoteOf, greetingOf, cardioLabel, sportLabel } from './plan.js';
 import { openWelcome, WELCOME_PAGES, EDIT_PAGES, OBJECTIVE_PAGES } from './welcome.js';
 import { GENDERS, STATUSES, PHASES as CYCLE_PHASES, cycleDayInfo, lateDays, nextPeriod, pregnancyInfo, ageOf, diffDays } from './cycle.js';
+import { computeSeeds, SEED_GUIDE } from './gamify.js';
 
 // ---------- estado ----------
 const state = {
@@ -40,7 +41,8 @@ const state = {
   cycleDay: null,
   sleepDate: null,
   showPlanCard: false,
-  data: { measurements: [], logs: [], gymDays: new Set(), profile: {}, sleep: [], moods: [], meals: [], waters: [], custom: [], goals: new Map() }
+  showSeedGuide: false,
+  data: { measurements: [], logs: [], gymDays: new Set(), profile: {}, sleep: [], moods: [], meals: [], waters: [], restDays: [], custom: [], goals: new Map() }
 };
 
 // exercícios do plano, por nome
@@ -100,6 +102,7 @@ function applyData(out) {
   state.data.moods = out.moods || [];
   state.data.meals = out.meals || [];
   state.data.waters = out.waters || [];
+  state.data.restDays = out.rest_days || [];
   state.data.custom = out.custom_exercises || [];
   state.data.goals = new Map((out.goals || []).map((g) => [g.month, Number(g.days)]));
 }
@@ -1034,6 +1037,19 @@ function waterCheckinHtml() {
   </div>`;
 }
 
+async function saveRestDay() {
+  const t = today();
+  state.restDay = t;
+  toast('Descanso é treino também. Até amanhã!');
+  render();
+  if (state.data.restDays.includes(t)) return;
+  try {
+    await api.setRest(uid(), state.pin, { day: t });
+    state.data.restDays = state.data.restDays.concat(t).sort();
+    render();
+  } catch { /* fica só local até à próxima sincronização */ }
+}
+
 async function saveWater(btn) {
   const ok = btn.dataset.ok === '1';
   const [cx, cy] = centerOf(btn);
@@ -1248,19 +1264,9 @@ function buttyPillars() {
   const mealOk = !!mealEntry && Number(mealEntry.ate) >= 1;
   const waterEntry = todayWater();
   const waterOk = !!waterEntry && waterEntry.ok === true;
-  return { exerciseOk, sleepOk, mealOk, sleepEntry, mealEntry, waterEntry, waterOk };
+  const restOk = state.data.restDays.includes(t);
+  return { exerciseOk, sleepOk, mealOk, sleepEntry, mealEntry, waterEntry, waterOk, restOk };
 }
-
-// Cada dia dá até 4 XP (exercício + dormir bem + comer bem + beber água). O XP acumula-se
-// para sempre e faz a Butty subir de nível — é sempre a mesma Butty, só muda a expressão.
-const XP_LEVELS = [
-  { xp: 0, img: 'face-sleepy', name: 'Butty bebé' },
-  { xp: 6, img: 'face-shock', name: 'Butty curiosa' },
-  { xp: 15, img: 'face-joy', name: 'Butty animada' },
-  { xp: 28, img: 'face-love', name: 'Butty amorosa' },
-  { xp: 45, img: 'face-wink', name: 'Butty convencida' },
-  { xp: 66, img: 'face-laugh', name: 'Butty radiante' }
-];
 
 // Conta quantas vezes, ao longo do tempo, um registo bateu a melhor carga anterior desse exercício
 // (1 por registo que melhora o recorde, não por série, para não inflacionar com um único treino).
@@ -1286,23 +1292,31 @@ function buttyPRCount() {
   return count;
 }
 
-function buttyXP() {
-  const t = today();
-  const trainedDays = [...trainedDaySet()].filter((d) => d <= t).length;
-  const sleepGood = state.data.sleep.filter((s) => s.day <= t && Number(s.hours) >= 7).length;
-  const mealGood = state.data.meals.filter((m) => m.day <= t && Number(m.ate) >= 1).length;
-  const waterGood = state.data.waters.filter((w) => w.day <= t && w.ok === true).length;
-  return trainedDays + sleepGood + mealGood + waterGood + buttyPRCount();
+// Tudo o que entra no cálculo de sementes da Butty (ver js/gamify.js).
+function buttySeedCtx() {
+  return {
+    profile: profileOf(),
+    trainedDays: trainedDaySet(),
+    cardioDays: new Set(state.data.logs.filter((l) => groupOf(l.exercise) === 'cardio').map((l) => l.date)),
+    sleepGoodDays: new Set(state.data.sleep.filter((s) => Number(s.hours) >= 7).map((s) => s.day)),
+    mealGoodDays: new Set(state.data.meals.filter((m) => Number(m.ate) >= 1).map((m) => m.day)),
+    waterGoodDays: new Set(state.data.waters.filter((w) => w.ok === true).map((w) => w.day)),
+    restDays: new Set(state.data.restDays),
+    measurementDays: state.data.measurements.map((m) => m.date),
+    prCount: buttyPRCount(),
+    goals: state.data.goals,
+    today: today()
+  };
 }
 
 function buttyProgress() {
-  const xp = buttyXP();
-  let idx = 0;
-  for (let i = 0; i < XP_LEVELS.length; i++) if (xp >= XP_LEVELS[i].xp) idx = i;
-  const cur = XP_LEVELS[idx];
-  const next = XP_LEVELS[idx + 1] || null;
-  const pct = next ? Math.min(100, Math.round(((xp - cur.xp) / (next.xp - cur.xp)) * 100)) : 100;
-  return { xp, level: idx + 1, cur, next, pct };
+  const seeds = computeSeeds(buttySeedCtx());
+  return {
+    xp: seeds.total, level: seeds.level + 1, pct: seeds.pct,
+    inLevel: seeds.inLevel, needed: seeds.needed,
+    cur: { img: seeds.img, name: seeds.name }, next: { name: seeds.nextName },
+    seeds
+  };
 }
 
 function buttyStreak() {
@@ -1321,12 +1335,12 @@ function buttyStreak() {
   return n;
 }
 
-function buttyBadges() {
+function buttyBadges(totalSeeds) {
   const trainedDays = [...trainedDaySet()].filter((d) => d <= today()).length;
   const sleepGood = state.data.sleep.filter((s) => Number(s.hours) >= 7).length;
   const mealGood = state.data.meals.filter((m) => Number(m.ate) >= 1).length;
   return [
-    { ic: 'star', label: 'Primeiros passos', done: buttyXP() >= 1 },
+    { ic: 'star', label: 'Primeiras sementes', done: totalSeeds >= 1 },
     { ic: 'flame', label: '7 dias seguidos em pleno', done: buttyStreak() >= 7 },
     { ic: 'moon', label: '10 noites bem dormidas', done: sleepGood >= 10 },
     { ic: 'leaf', label: '10 refeições em dia', done: mealGood >= 10 },
@@ -1336,27 +1350,63 @@ function buttyBadges() {
 }
 
 const BUTTY_DAY_NOTES = [
-  'Ainda não cuidaste de nada disto hoje — cada coisa que fizeres soma XP para sempre.',
-  'Vai indo bem — continua e ganha mais XP hoje.',
+  'Ainda não cuidaste de nada disto hoje — cada coisa que fizeres soma sementes para sempre.',
+  'Vai indo bem — continua e ganha mais sementes hoje.',
   'Estás a meio caminho — continua assim.',
-  'Quase lá! Mais uma coisa e fazes pleno hoje.',
-  'Pleno hoje! Esse XP fica guardado no nível da Butty para sempre.'
+  'Quase lá! Mais um pouco e fazes pleno hoje.',
+  'Quase pleno — falta só mais uma coisa!',
+  'Pleno hoje! Essas sementes ficam guardadas no nível da Butty para sempre.'
 ];
 
-function buttyBadgesHtml() {
-  return `<div class="butty-badges">${buttyBadges().map((b) => `<span class="bb-chip${b.done ? ' on' : ''}" title="${esc(b.label)}">${icon(b.ic, 14)}</span>`).join('')}</div>`;
+function buttyBadgesHtml(totalSeeds) {
+  return `<div class="butty-badges">${buttyBadges(totalSeeds).map((b) => `<span class="bb-chip${b.done ? ' on' : ''}" title="${esc(b.label)}">${icon(b.ic, 14)}</span>`).join('')}</div>`;
+}
+
+// Barrinha ondulada do nível da Butty: enche como água, com a onda sempre a mexer-se.
+// Interativa (clicar mostra como ganhar sementes) ou só decorativa, para usos mais pequenos.
+function buttyWaveBarHtml(pct, { small = false, interactive = true } = {}) {
+  const tag = interactive ? 'button' : 'div';
+  const attrs = interactive ? `type="button" data-action="toggle-seed-guide" aria-expanded="${state.showSeedGuide}" aria-label="Ver como ganhar sementes"` : 'aria-hidden="true"';
+  return `<${tag} class="butty-wave-bar${small ? ' sm' : ''}" ${attrs} style="--pct:${pct}%">
+    <span class="bwb-track"></span>
+    <span class="bwb-fill">
+      <svg class="bwb-wave" viewBox="0 0 40 10" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M0,5 C2.5,2 7.5,2 10,5 C12.5,8 17.5,8 20,5 C22.5,2 27.5,2 30,5 C32.5,8 37.5,8 40,5 V10 H0 Z"></path>
+      </svg>
+    </span>
+  </${tag}>`;
+}
+
+function seedGuideHtml() {
+  const bySource = new Map(buttyProgress().seeds.sources.map((s) => [s.id, s]));
+  const GROUP_LABEL = { dia: 'hoje', semana: 'esta semana', mes: 'este mês', nivel: 'este nível' };
+  return `<div class="seed-guide${state.showSeedGuide ? ' open' : ''}">
+    <p class="diet-note">Cada coisa destas dá sementes para sempre — nunca se perdem, só fazem a Butty crescer.</p>
+    ${SEED_GUIDE.map((g) => `<div class="sg-group">
+      <div class="sg-group-title">${esc(g.title)}</div>
+      ${g.items.map((it) => {
+        const got = bySource.get(it.id);
+        return `<div class="sg-row${got ? ' on' : ''}">
+          <span class="br-ico">${icon(got ? 'check' : 'leaf', 13)}</span>
+          <span class="br-label">${esc(it.label)}</span>
+          <span class="br-note">+${it.seeds}${got && got.count > 1 ? ` · ${got.count}x` : ''}</span>
+        </div>`;
+      }).join('')}
+    </div>`).join('')}
+  </div>`;
 }
 
 function buttyHtml() {
-  const { exerciseOk, sleepOk, mealOk, sleepEntry, mealEntry, waterOk, waterEntry } = buttyPillars();
-  const score = [exerciseOk, sleepOk, mealOk, waterOk].filter(Boolean).length;
+  const { exerciseOk, sleepOk, mealOk, sleepEntry, mealEntry, waterOk, waterEntry, restOk } = buttyPillars();
+  const score = [exerciseOk, sleepOk, mealOk, waterOk, restOk].filter(Boolean).length;
   const prog = buttyProgress();
   const streak = buttyStreak();
   const rows = [
-    { ok: exerciseOk, label: 'Exercício hoje', page: 'treino', note: exerciseOk ? 'Feito' : 'Ainda não' },
-    { ok: sleepOk, label: 'Dormir bem (7h+)', page: 'alimentacao', note: sleepEntry ? fmtHours(sleepEntry.hours) : 'Por registar' },
-    { ok: mealOk, label: 'Comer bem', page: 'alimentacao', note: mealEntry ? MEAL_LABELS[mealEntry.ate] : 'Por registar' },
-    { ok: waterOk, label: 'Beber água', page: 'alimentacao', note: waterEntry ? (waterEntry.ok ? 'Sim' : 'Ainda não') : 'Por registar' }
+    { ok: exerciseOk, label: 'Exercício hoje', page: 'treino', note: exerciseOk ? '+5' : 'Ainda não', seed: 5 },
+    { ok: sleepOk, label: 'Dormir bem (7h+)', page: 'alimentacao', note: sleepEntry ? fmtHours(sleepEntry.hours) : 'Por registar', seed: 2 },
+    { ok: mealOk, label: 'Comer bem', page: 'alimentacao', note: mealEntry ? MEAL_LABELS[mealEntry.ate] : 'Por registar', seed: 2 },
+    { ok: waterOk, label: 'Beber água', page: 'alimentacao', note: waterEntry ? (waterEntry.ok ? 'Sim' : 'Ainda não') : 'Por registar', seed: 2 },
+    { ok: restOk, label: 'Descanso registado', page: 'inicio', note: restOk ? 'Feito' : 'Por registar', seed: 1 }
   ];
   return `<div class="card butty-card tilt">
     <span class="fluffy tr" aria-hidden="true"></span>
@@ -1367,15 +1417,17 @@ function buttyHtml() {
         <h2>${esc(prog.cur.name)}</h2>
       </div>
     </div>
-    <div class="butty-xp-bar"><div class="butty-xp-fill" style="width:${prog.pct}%"></div></div>
-    <div class="butty-xp-label">${prog.next ? `${prog.xp - prog.cur.xp}/${prog.next.xp - prog.cur.xp} XP para o nível ${prog.level + 1} (${esc(prog.next.name)})` : `Nível máximo — ${prog.xp} XP ao todo. A Butty está completa!`}</div>
+    ${buttyWaveBarHtml(prog.pct)}
+    <div class="butty-xp-label">${prog.inLevel}/${prog.needed} sementes para o nível ${prog.level + 1} (${esc(prog.next.name)}) · ${icon('leaf', 11)} ${prog.xp} sementes ao todo</div>
+
+    ${seedGuideHtml()}
     <p class="diet-note butty-note">${BUTTY_DAY_NOTES[score]}</p>
     <div class="butty-rows">
       ${rows.map((r) => `<button type="button" class="butty-row${r.ok ? ' on' : ''}" data-action="go-page" data-page="${r.page}">
-        <span class="br-ico">${icon(r.ok ? 'check' : 'minus', 14)}</span><span class="br-label">${esc(r.label)}</span><span class="br-note">${esc(r.note)}</span>
+        <span class="br-ico">${icon(r.ok ? 'check' : 'minus', 14)}</span><span class="br-label">${esc(r.label)}</span><span class="br-note">${r.ok ? `+${r.seed}` : esc(r.note)}</span>
       </button>`).join('')}
     </div>
-    ${buttyBadgesHtml()}
+    ${buttyBadgesHtml(prog.xp)}
   </div>`;
 }
 
@@ -1851,7 +1903,7 @@ function buttySummaryHtml() {
     <img class="bs-img" src="${BUTTY_IMG(prog.cur.img)}" alt="Butty, a mascote">
     <div class="bs-text">
       <h2>Nível ${prog.level} · ${esc(prog.cur.name)}</h2>
-      <div class="butty-xp-bar sm"><div class="butty-xp-fill" style="width:${prog.pct}%"></div></div>
+      ${buttyWaveBarHtml(prog.pct, { small: true, interactive: false })}
       <div class="bs-dots">${dot(exerciseOk)}<span>Exercício</span>${dot(sleepOk)}<span>Sono</span>${dot(mealOk)}<span>Alimentação</span>${dot(waterOk)}<span>Água</span></div>
     </div>
   </div>`;
@@ -1860,7 +1912,7 @@ function buttySummaryHtml() {
 function buttyAchievementsHtml() {
   return `<div class="card">
     <h2>${icon('star', 18)} Conquistas da Butty</h2>
-    <div class="achv-list">${buttyBadges().map((b) => `<div class="achv-row${b.done ? ' on' : ''}">
+    <div class="achv-list">${buttyBadges(buttyProgress().xp).map((b) => `<div class="achv-row${b.done ? ' on' : ''}">
       <span class="br-ico">${icon(b.ic, 14)}</span><span class="br-label">${esc(b.label)}</span>${b.done ? `<span class="br-note">${icon('check', 13)}</span>` : ''}
     </div>`).join('')}</div>
   </div>`;
@@ -2186,8 +2238,8 @@ function buttyProgressHtml() {
     <img class="bs-img" src="${BUTTY_IMG(prog.cur.img)}" alt="Butty, a mascote">
     <div class="bs-text">
       <h2>Como anda a Butty · Nível ${prog.level}</h2>
-      <div class="butty-xp-bar sm"><div class="butty-xp-fill" style="width:${prog.pct}%"></div></div>
-      <p class="diet-note">${radiant > 0 ? `Este mês já houve <b>${radiant}</b> dia${radiant === 1 ? '' : 's'} em pleno (exercício, sono e alimentação em dia), e já tens <b>${prog.xp} XP</b> ao todo.` : `Ainda não houve nenhum dia em pleno este mês. Tens <b>${prog.xp} XP</b> ao todo — cada dia soma mais.`}</p>
+      ${buttyWaveBarHtml(prog.pct, { small: true, interactive: false })}
+      <p class="diet-note">${radiant > 0 ? `Este mês já houve <b>${radiant}</b> dia${radiant === 1 ? '' : 's'} em pleno (exercício, sono e alimentação em dia), e já tens <b>${prog.xp} sementes</b> ao todo.` : `Ainda não houve nenhum dia em pleno este mês. Tens <b>${prog.xp} sementes</b> ao todo — cada dia soma mais.`}</p>
     </div>
   </div>`;
 }
@@ -2466,7 +2518,7 @@ function onClick(ev) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
       break;
     }
-    case 'home-rest': state.restDay = today(); toast('Descanso é treino também. Até amanhã!'); break;
+    case 'home-rest': saveRestDay(); return;
     case 'home-goal': setMonthGoal(el); return;
     case 'start-plan': startWelcome('first'); return;
     case 'edit-plan': startWelcome('edit'); return;
@@ -2506,6 +2558,7 @@ function onClick(ev) {
     case 'save-profile': saveProfile(el); return;
     case 'period-today': periodStartedToday(el); return;
     case 'toggle-plan-card': state.showPlanCard = !state.showPlanCard; render(); return;
+    case 'toggle-seed-guide': state.showSeedGuide = !state.showSeedGuide; render(); return;
     case 'cycle-day': state.cycleDay = d.date; render(); return;
     case 'edit-log':
       state.editingLog = Number(d.id); state.openExercise = d.ex; state.confirm = null;
