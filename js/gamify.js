@@ -119,8 +119,9 @@ export function computeSeeds(ctx) {
   add('mealGood', 'Comer bem', mealGoodDays.size * 2, 'dia', mealGoodDays.size);
   add('waterGood', 'Beber a água toda', waterGoodDays.size * 2, 'dia', waterGoodDays.size);
   add('sleepGood', 'Dormir bem', sleepGoodDays.size * 2, 'dia', sleepGoodDays.size);
-  add('trainedDay', 'Fazer o exercício do dia', trainedDays.size * 5, 'dia', trainedDays.size);
-  add('restDay', 'Registar o descanso do dia', restDays.size * 1, 'dia', restDays.size);
+  add('trainedDay', 'Registar o treino do dia', trainedDays.size * 2, 'dia', trainedDays.size);
+  const restOnly = [...restDays].filter((d) => !trainedDays.has(d)).length; // se treinou, conta só o treino
+  add('restDay', 'Registar o descanso do dia', restOnly * 1, 'dia', restOnly);
 
   const total = sources.reduce((s, x) => s + x.seeds, 0);
   const level = levelForSeeds(total);
@@ -143,7 +144,7 @@ export const SEED_GUIDE = [
       { id: 'mealGood', label: 'Comer bem', seeds: 2 },
       { id: 'waterGood', label: 'Beber a água toda', seeds: 2 },
       { id: 'sleepGood', label: 'Dormir bem (7h ou mais)', seeds: 2 },
-      { id: 'trainedDay', label: 'Fazer o exercício do dia', seeds: 5 },
+      { id: 'trainedDay', label: 'Registar o treino do dia', seeds: 2 },
       { id: 'restDay', label: 'Registar o descanso do dia', seeds: 1 }
     ]
   },

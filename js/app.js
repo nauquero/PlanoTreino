@@ -1349,15 +1349,6 @@ function buttyBadges(totalSeeds) {
   ];
 }
 
-const BUTTY_DAY_NOTES = [
-  'Ainda não cuidaste de nada disto hoje — cada coisa que fizeres soma sementes para sempre.',
-  'Vai indo bem — continua e ganha mais sementes hoje.',
-  'Estás a meio caminho — continua assim.',
-  'Quase lá! Mais um pouco e fazes pleno hoje.',
-  'Quase pleno — falta só mais uma coisa!',
-  'Pleno hoje! Essas sementes ficam guardadas no nível da Butty para sempre.'
-];
-
 function buttyBadgesHtml(totalSeeds) {
   return `<div class="butty-badges">${buttyBadges(totalSeeds).map((b) => `<span class="bb-chip${b.done ? ' on' : ''}" title="${esc(b.label)}">${icon(b.ic, 14)}</span>`).join('')}</div>`;
 }
@@ -1398,15 +1389,13 @@ function seedGuideHtml() {
 
 function buttyHtml() {
   const { exerciseOk, sleepOk, mealOk, sleepEntry, mealEntry, waterOk, waterEntry, restOk } = buttyPillars();
-  const score = [exerciseOk, sleepOk, mealOk, waterOk, restOk].filter(Boolean).length;
   const prog = buttyProgress();
   const streak = buttyStreak();
   const rows = [
-    { ok: exerciseOk, label: 'Exercício hoje', page: 'treino', note: exerciseOk ? '+5' : 'Ainda não', seed: 5 },
+    { ok: exerciseOk || restOk, label: 'Treino ou descanso', page: exerciseOk ? 'treino' : 'inicio', note: 'Por registar', seed: exerciseOk ? 2 : 1 },
     { ok: sleepOk, label: 'Dormir bem (7h+)', page: 'alimentacao', note: sleepEntry ? fmtHours(sleepEntry.hours) : 'Por registar', seed: 2 },
     { ok: mealOk, label: 'Comer bem', page: 'alimentacao', note: mealEntry ? MEAL_LABELS[mealEntry.ate] : 'Por registar', seed: 2 },
-    { ok: waterOk, label: 'Beber água', page: 'alimentacao', note: waterEntry ? (waterEntry.ok ? 'Sim' : 'Ainda não') : 'Por registar', seed: 2 },
-    { ok: restOk, label: 'Descanso registado', page: 'inicio', note: restOk ? 'Feito' : 'Por registar', seed: 1 }
+    { ok: waterOk, label: 'Beber água', page: 'alimentacao', note: waterEntry ? (waterEntry.ok ? 'Sim' : 'Ainda não') : 'Por registar', seed: 2 }
   ];
   return `<div class="card butty-card tilt">
     <span class="fluffy tr" aria-hidden="true"></span>
@@ -1421,7 +1410,6 @@ function buttyHtml() {
     <div class="butty-xp-label">${prog.inLevel}/${prog.needed} sementes para o nível ${prog.level + 1} (${esc(prog.next.name)}) · ${icon('leaf', 11)} ${prog.xp} sementes ao todo</div>
 
     ${seedGuideHtml()}
-    <p class="diet-note butty-note">${BUTTY_DAY_NOTES[score]}</p>
     <div class="butty-rows">
       ${rows.map((r) => `<button type="button" class="butty-row${r.ok ? ' on' : ''}" data-action="go-page" data-page="${r.page}">
         <span class="br-ico">${icon(r.ok ? 'check' : 'minus', 14)}</span><span class="br-label">${esc(r.label)}</span><span class="br-note">${r.ok ? `+${r.seed}` : esc(r.note)}</span>
