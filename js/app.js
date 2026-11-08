@@ -14,7 +14,7 @@ import { restBgInit, restBgUpdate, restBgDone, restBgStop } from './rest-bg.js';
 import { MUSCLES, MUSCLE_LABEL, OBJECTIVES, OBJECTIVE_KEYS, OBJECTIVE_PLAN, planOf, quoteOf, greetingOf, cardioLabel, sportLabel } from './plan.js';
 import { openWelcome, WELCOME_PAGES, EDIT_PAGES, OBJECTIVE_PAGES } from './welcome.js';
 import { GENDERS, STATUSES, PHASES as CYCLE_PHASES, cycleDayInfo, lateDays, nextPeriod, pregnancyInfo, ageOf, diffDays } from './cycle.js';
-import { computeSeeds, SEED_GUIDE } from './gamify.js';
+import { computeSeeds, challengeProgress, SEED_GUIDE } from './gamify.js';
 
 // ---------- estado ----------
 const state = {
@@ -41,7 +41,7 @@ const state = {
   cycleDay: null,
   sleepDate: null,
   showPlanCard: false,
-  showSeedGuide: false,
+  challengeTab: 'dia',
   data: { measurements: [], logs: [], gymDays: new Set(), profile: {}, sleep: [], moods: [], meals: [], waters: [], restDays: [], custom: [], goals: new Map() }
 };
 
@@ -1268,15 +1268,16 @@ function buttyPillars() {
   return { exerciseOk, sleepOk, mealOk, sleepEntry, mealEntry, waterEntry, waterOk, restOk };
 }
 
-// Conta quantas vezes, ao longo do tempo, um registo bateu a melhor carga anterior desse exercício
+// Datas em que um registo bateu a melhor carga anterior desse exercício
 // (1 por registo que melhora o recorde, não por série, para não inflacionar com um único treino).
-function buttyPRCount() {
+function buttyPRCount() { return buttyPRDays().length; }
+function buttyPRDays() {
   const byExercise = new Map();
   for (const l of state.data.logs) {
     if (!byExercise.has(l.exercise)) byExercise.set(l.exercise, []);
     byExercise.get(l.exercise).push(l);
   }
-  let count = 0;
+  const days = [];
   for (const logs of byExercise.values()) {
     const sorted = [...logs].sort((a, b) => a.date.localeCompare(b.date) || (a.id || 0) - (b.id || 0));
     let bestW = 0, bestR = 0;
@@ -1286,10 +1287,10 @@ function buttyPRCount() {
         if (!(r.weight > 0) || !(r.reps > 0)) continue;
         if (r.weight > logW || (r.weight === logW && r.reps > logR)) { logW = r.weight; logR = r.reps; }
       }
-      if (logW > 0 && (logW > bestW || (logW === bestW && logR > bestR))) { count++; bestW = logW; bestR = logR; }
+      if (logW > 0 && (logW > bestW || (logW === bestW && logR > bestR))) { days.push(l.date); bestW = logW; bestR = logR; }
     }
   }
-  return count;
+  return days;
 }
 
 // Tudo o que entra no cálculo de sementes da Butty (ver js/gamify.js).
@@ -1304,6 +1305,7 @@ function buttySeedCtx() {
     restDays: new Set(state.data.restDays),
     measurementDays: state.data.measurements.map((m) => m.date),
     prCount: buttyPRCount(),
+    prDays: buttyPRDays(),
     goals: state.data.goals,
     today: today()
   };
@@ -1349,65 +1351,150 @@ function buttyBadges(totalSeeds) {
   ];
 }
 
-const BUTTY_DAY_NOTES = [
-  'Ainda não cuidaste de nada disto hoje — cada coisa que fizeres soma sementes para sempre.',
-  'Vai indo bem — continua e ganha mais sementes hoje.',
-  'Estás a meio caminho — continua assim.',
-  'Quase lá! Mais um pouco e fazes pleno hoje.',
-  'Quase pleno — falta só mais uma coisa!',
-  'Pleno hoje! Essas sementes ficam guardadas no nível da Butty para sempre.'
-];
+// Mensagens engraçadas da Butty, conforme o que já foi feito hoje.
+// Escolhe-se sempre a mesma para a mesma situação no mesmo dia (não muda a cada clique).
+const BUTTY_QUIPS = {
+  pleno: [
+    'Pleno! Treinaste, dormiste, comeste e bebeste água. Estou a considerar pedir-te um autógrafo. ✍️',
+    'Dia perfeito. Vou contar a todos os veados da floresta. 🦌✨',
+    'Pleno hoje! Se houvesse Óscares para hábitos saudáveis, já estavas a ensaiar o discurso. 🏆',
+    'Tudo feito! Agora podes ficar no sofá com a consciência mais leve do que uma pluma. 🪶'
+  ],
+  nadaManha: [
+    'Bom dia! Ainda estou de pijama, mas acredito em ti. ☕',
+    'Dia novo, folha em branco. Bora rabiscá-la com coisas boas? ✏️',
+    'Acordei com vontade de ganhar sementes. Tu também, certo? Certo?! 🌱'
+  ],
+  nada: [
+    'Até agora o dia vai em modo avião. Vamos aterrar nalgum hábito? ✈️',
+    'Hoje ainda não fizemos nada... mas também ninguém está a contar. Exceto eu. Eu estou a contar. 👀',
+    'Ainda nada por aqui. Eu cá não julgo, só pisco os olhos com muita intensidade. 😶',
+    'O sofá está a ganhar 1-0. Vamos dar a volta ao resultado? ⚽'
+  ],
+  sonoCurto: [
+    'Dormiste pouco... estou com mais olheiras do que um panda. 🐼',
+    'Menos de 7 horas? Hoje vou andar a bocejar em modo câmara lenta. 😴',
+    'O sono ficou curtinho. Logo à noite, cama cedo e telemóvel longe, combinado? 🛌'
+  ],
+  comidaMa: [
+    'Hoje a comida não correu bem? Amanhã é outro dia, e os brócolos perdoam tudo. 🥦',
+    'A alimentação hoje foi "nem por isso". Nada que uma sopinha não resolva. 🍲'
+  ],
+  aguaNao: [
+    'Ainda não bebeste a água toda? Estou mais seca do que uma tosta. 🍞',
+    'Água, água, água! Já estou a ficar com cara de cato. 🌵'
+  ],
+  descanso: [
+    'Dia de descanso registado. Os músculos agradecem e eu também vou fazer uma sesta. 💤',
+    'Descansar também é treinar, mas com mantinha. 🛋️'
+  ],
+  soTreino: [
+    'Treino feito! Agora não te esqueças de beber água e comer, que não vivemos só de agachamentos. 💪',
+    'Já treinaste! Estou tão orgulhosa que até me cresceram as hastes. 🦌',
+    'Treino no papo! Agora é só dormir, comer e beber água. Simples, né? 😇'
+  ],
+  faltaTreino: [
+    'Está quase tudo feito, só falta mexer o rabinho! 🍑',
+    'Dormiste, comeste e bebeste água... o ginásio está a mandar mensagens. 📱',
+    'Falta só o treino. Prometo dançar se fores! 💃'
+  ],
+  faltaSono: [
+    'Tudo feito menos o sono. Hoje à noite é obrigatório: cama, mantinha e 7 horas! 🌙',
+    'Só falta dormir bem. É o desafio mais fácil: é literalmente estar deitada. 😴'
+  ],
+  faltaComida: [
+    'Só falta comer bem! Não, um café não conta como refeição. ☕🚫',
+    'Quase pleno, falta a comidinha. O frigorífico está a chamar por ti. 🥗'
+  ],
+  faltaAgua: [
+    'Só falta a água! Um copinho de cada vez e chegamos lá. 💧',
+    'Quase pleno! Bebe a água toda e eu prometo não fazer mais trocadilhos aquáticos. Hmm... talvez. 🌊'
+  ],
+  meio: [
+    'Vamos a meio! Já mereces uma palmadinha nas costas, mas só uma. 👏',
+    'Estás a ir bem! Mais umas coisinhas e fazes inveja à floresta inteira. 🌳',
+    'Bom ritmo! Ainda há sementes por apanhar, eu guardo-te o lugar. 🌱'
+  ]
+};
+
+function buttyQuip() {
+  const { exerciseOk, sleepOk, mealOk, waterOk, restOk, sleepEntry, mealEntry, waterEntry } = buttyPillars();
+  const core = [exerciseOk, sleepOk, mealOk, waterOk];
+  const done = core.filter(Boolean).length;
+  const anything = done > 0 || restOk || sleepEntry || mealEntry || waterEntry;
+  let key;
+  if (done === 4) key = 'pleno';
+  else if (!anything) key = new Date().getHours() < 12 ? 'nadaManha' : 'nada';
+  else if (done === 3) key = !exerciseOk ? (restOk ? 'descanso' : 'faltaTreino') : !sleepOk ? (sleepEntry ? 'sonoCurto' : 'faltaSono') : !mealOk ? (mealEntry ? 'comidaMa' : 'faltaComida') : 'faltaAgua';
+  else if (sleepEntry && !sleepOk) key = 'sonoCurto';
+  else if (mealEntry && !mealOk) key = 'comidaMa';
+  else if (waterEntry && !waterOk) key = 'aguaNao';
+  else if (exerciseOk && done === 1) key = 'soTreino';
+  else if (restOk && !exerciseOk && done <= 1) key = 'descanso';
+  else key = 'meio';
+  const pool = BUTTY_QUIPS[key];
+  const seed = `${today()}-${key}`.split('').reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+  return pool[seed % pool.length];
+}
 
 function buttyBadgesHtml(totalSeeds) {
   return `<div class="butty-badges">${buttyBadges(totalSeeds).map((b) => `<span class="bb-chip${b.done ? ' on' : ''}" title="${esc(b.label)}">${icon(b.ic, 14)}</span>`).join('')}</div>`;
 }
 
 // Barrinha ondulada do nível da Butty: enche como água, com a onda sempre a mexer-se.
-// Interativa (clicar mostra como ganhar sementes) ou só decorativa, para usos mais pequenos.
-function buttyWaveBarHtml(pct, { small = false, interactive = true } = {}) {
-  const tag = interactive ? 'button' : 'div';
-  const attrs = interactive ? `type="button" data-action="toggle-seed-guide" aria-expanded="${state.showSeedGuide}" aria-label="Ver como ganhar sementes"` : 'aria-hidden="true"';
-  return `<${tag} class="butty-wave-bar${small ? ' sm' : ''}" ${attrs} style="--pct:${pct}%">
+function buttyWaveBarHtml(pct, { small = false } = {}) {
+  return `<div class="butty-wave-bar${small ? ' sm' : ''}" aria-hidden="true" style="--pct:${pct}%">
     <span class="bwb-track"></span>
     <span class="bwb-fill">
       <svg class="bwb-wave" viewBox="0 0 40 10" preserveAspectRatio="none" aria-hidden="true">
         <path d="M0,5 C2.5,2 7.5,2 10,5 C12.5,8 17.5,8 20,5 C22.5,2 27.5,2 30,5 C32.5,8 37.5,8 40,5 V10 H0 Z"></path>
       </svg>
     </span>
-  </${tag}>`;
+  </div>`;
 }
 
-function seedGuideHtml() {
-  const bySource = new Map(buttyProgress().seeds.sources.map((s) => [s.id, s]));
-  const GROUP_LABEL = { dia: 'hoje', semana: 'esta semana', mes: 'este mês', nivel: 'este nível' };
-  return `<div class="seed-guide${state.showSeedGuide ? ' open' : ''}">
-    <p class="diet-note">Cada coisa destas dá sementes para sempre — nunca se perdem, só fazem a Butty crescer.</p>
-    ${SEED_GUIDE.map((g) => `<div class="sg-group">
-      <div class="sg-group-title">${esc(g.title)}</div>
-      ${g.items.map((it) => {
-        const got = bySource.get(it.id);
-        return `<div class="sg-row${got ? ' on' : ''}">
-          <span class="br-ico">${icon(got ? 'check' : 'leaf', 13)}</span>
-          <span class="br-label">${esc(it.label)}</span>
-          <span class="br-note">+${it.seeds}${got && got.count > 1 ? ` · ${got.count}x` : ''}</span>
-        </div>`;
+// Desafios em formato visual: um separador por período e, em cada um, anéis que enchem
+// à medida que o desafio avança. Um desafio cumprido fica verde com um visto.
+function challengesHtml() {
+  const prog = challengeProgress(buttySeedCtx());
+  const tab = SEED_GUIDE.some((g) => g.group === state.challengeTab) ? state.challengeTab : 'dia';
+  const R = 21, C = 2 * Math.PI * R;
+  const doneIn = (g) => g.items.filter((it) => { const p = prog[it.id]; return p.target > 0 && p.cur >= p.target; }).length;
+  const group = SEED_GUIDE.find((g) => g.group === tab);
+  return `<div class="chal">
+    <div class="chal-tabs" role="tablist" aria-label="Desafios">
+      ${SEED_GUIDE.map((g) => `<button type="button" role="tab" class="chal-tab${g.group === tab ? ' on' : ''}" aria-selected="${g.group === tab}" data-action="challenge-tab" data-tab="${g.group}">
+        ${esc(g.title)}<span class="chal-count">${doneIn(g)}/${g.items.length}</span></button>`).join('')}
+    </div>
+    <div class="chal-grid" style="--n:${group.items.length}">
+      ${group.items.map((it) => {
+        const p = prog[it.id];
+        const noGoal = p.target === 0;
+        const done = !noGoal && p.cur >= p.target;
+        const frac = noGoal ? 0 : Math.min(1, p.cur / p.target);
+        const sub = noGoal ? 'Sem objetivo' : done ? 'Feito!' : p.target > 1 ? `${p.cur}/${p.target}` : 'Por fazer';
+        const tag = it.page ? 'button' : 'div';
+        const attrs = it.page ? `type="button" data-action="go-page" data-page="${it.page}"` : '';
+        return `<${tag} class="chal-tile${done ? ' done' : ''}" ${attrs} title="${esc(it.label)}" aria-label="${esc(it.label)}: ${esc(sub)}">
+          <span class="chal-ring">
+            <svg viewBox="0 0 50 50" aria-hidden="true">
+              <circle class="cr-track" cx="25" cy="25" r="${R}"></circle>
+              <circle class="cr-fill" cx="25" cy="25" r="${R}" stroke-dasharray="${C.toFixed(2)}" stroke-dashoffset="${(C * (1 - frac)).toFixed(2)}"></circle>
+            </svg>
+            <span class="chal-ico">${icon(done ? 'check' : it.ic, 18)}</span>
+            <span class="chal-seeds">+${it.seeds}</span>
+          </span>
+          <span class="chal-name">${esc(it.short)}</span>
+          <span class="chal-sub">${esc(sub)}</span>
+        </${tag}>`;
       }).join('')}
-    </div>`).join('')}
+    </div>
   </div>`;
 }
 
 function buttyHtml() {
-  const { exerciseOk, sleepOk, mealOk, sleepEntry, mealEntry, waterOk, waterEntry, restOk } = buttyPillars();
-  const score = [exerciseOk, sleepOk, mealOk, waterOk, restOk].filter(Boolean).length;
   const prog = buttyProgress();
   const streak = buttyStreak();
-  const rows = [
-    { ok: exerciseOk, label: 'Exercício hoje', page: 'treino', note: exerciseOk ? '+5' : 'Ainda não', seed: 5 },
-    { ok: sleepOk, label: 'Dormir bem (7h+)', page: 'alimentacao', note: sleepEntry ? fmtHours(sleepEntry.hours) : 'Por registar', seed: 2 },
-    { ok: mealOk, label: 'Comer bem', page: 'alimentacao', note: mealEntry ? MEAL_LABELS[mealEntry.ate] : 'Por registar', seed: 2 },
-    { ok: waterOk, label: 'Beber água', page: 'alimentacao', note: waterEntry ? (waterEntry.ok ? 'Sim' : 'Ainda não') : 'Por registar', seed: 2 },
-    { ok: restOk, label: 'Descanso registado', page: 'inicio', note: restOk ? 'Feito' : 'Por registar', seed: 1 }
-  ];
   return `<div class="card butty-card tilt">
     <span class="fluffy tr" aria-hidden="true"></span>
     <div class="butty-head">
@@ -1417,16 +1504,10 @@ function buttyHtml() {
         <h2>${esc(prog.cur.name)}</h2>
       </div>
     </div>
+    <p class="butty-bubble">${esc(buttyQuip())}</p>
     ${buttyWaveBarHtml(prog.pct)}
     <div class="butty-xp-label">${prog.inLevel}/${prog.needed} sementes para o nível ${prog.level + 1} (${esc(prog.next.name)}) · ${icon('leaf', 11)} ${prog.xp} sementes ao todo</div>
-
-    ${seedGuideHtml()}
-    <p class="diet-note butty-note">${BUTTY_DAY_NOTES[score]}</p>
-    <div class="butty-rows">
-      ${rows.map((r) => `<button type="button" class="butty-row${r.ok ? ' on' : ''}" data-action="go-page" data-page="${r.page}">
-        <span class="br-ico">${icon(r.ok ? 'check' : 'minus', 14)}</span><span class="br-label">${esc(r.label)}</span><span class="br-note">${r.ok ? `+${r.seed}` : esc(r.note)}</span>
-      </button>`).join('')}
-    </div>
+    ${challengesHtml()}
     ${buttyBadgesHtml(prog.xp)}
   </div>`;
 }
@@ -1903,7 +1984,7 @@ function buttySummaryHtml() {
     <img class="bs-img" src="${BUTTY_IMG(prog.cur.img)}" alt="Butty, a mascote">
     <div class="bs-text">
       <h2>Nível ${prog.level} · ${esc(prog.cur.name)}</h2>
-      ${buttyWaveBarHtml(prog.pct, { small: true, interactive: false })}
+      ${buttyWaveBarHtml(prog.pct, { small: true })}
       <div class="bs-dots">${dot(exerciseOk)}<span>Exercício</span>${dot(sleepOk)}<span>Sono</span>${dot(mealOk)}<span>Alimentação</span>${dot(waterOk)}<span>Água</span></div>
     </div>
   </div>`;
@@ -2238,7 +2319,7 @@ function buttyProgressHtml() {
     <img class="bs-img" src="${BUTTY_IMG(prog.cur.img)}" alt="Butty, a mascote">
     <div class="bs-text">
       <h2>Como anda a Butty · Nível ${prog.level}</h2>
-      ${buttyWaveBarHtml(prog.pct, { small: true, interactive: false })}
+      ${buttyWaveBarHtml(prog.pct, { small: true })}
       <p class="diet-note">${radiant > 0 ? `Este mês já houve <b>${radiant}</b> dia${radiant === 1 ? '' : 's'} em pleno (exercício, sono e alimentação em dia), e já tens <b>${prog.xp} sementes</b> ao todo.` : `Ainda não houve nenhum dia em pleno este mês. Tens <b>${prog.xp} sementes</b> ao todo — cada dia soma mais.`}</p>
     </div>
   </div>`;
@@ -2558,7 +2639,7 @@ function onClick(ev) {
     case 'save-profile': saveProfile(el); return;
     case 'period-today': periodStartedToday(el); return;
     case 'toggle-plan-card': state.showPlanCard = !state.showPlanCard; render(); return;
-    case 'toggle-seed-guide': state.showSeedGuide = !state.showSeedGuide; render(); return;
+    case 'challenge-tab': state.challengeTab = d.tab; render(); return;
     case 'cycle-day': state.cycleDay = d.date; render(); return;
     case 'edit-log':
       state.editingLog = Number(d.id); state.openExercise = d.ex; state.confirm = null;

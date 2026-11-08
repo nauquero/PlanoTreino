@@ -136,38 +136,87 @@ export function computeSeeds(ctx) {
   };
 }
 
+// Progresso de um conjunto de dias "bons" seguidos que acaba hoje (ou ontem, se hoje ainda não conta).
+function currentRun(daySet, today) {
+  let d = daySet.has(today) ? today : shiftIso(today, -1);
+  let n = 0;
+  while (n < 400 && daySet.has(d)) { n++; d = shiftIso(d, -1); }
+  return n;
+}
+function shiftIso(iso, delta) {
+  const dt = new Date(parseIso(iso) + delta * DAY_MS);
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
+// Num bloco de `len` dias seguidos, quanto falta para o próximo (um bloco acabado mostra-se cheio).
+const runProgress = (run, len) => (run > 0 && run % len === 0 ? len : run % len);
+
+// Progresso de cada desafio no período atual (hoje / esta semana / este mês / conta),
+// para mostrar os desafios de forma visual (anel a encher). Devolve { id: { cur, target } }.
+export function challengeProgress(ctx) {
+  const {
+    profile = {}, trainedDays = new Set(), cardioDays = new Set(), sleepGoodDays = new Set(),
+    mealGoodDays = new Set(), waterGoodDays = new Set(), restDays = new Set(), measurementDays = [],
+    prDays = [], goals = new Map(), today
+  } = ctx;
+  const week = isoWeekKey(today), month = monthKeyOf(today);
+  const inWeek = (days) => [...days].filter((d) => d <= today && isoWeekKey(d) === week).length;
+  const inMonth = (days) => [...days].filter((d) => d <= today && monthKeyOf(d) === month).length;
+  const perfectDays = new Set([...trainedDays].filter((d) => sleepGoodDays.has(d) && mealGoodDays.has(d) && waterGoodDays.has(d)));
+  const has = (set) => (set.has(today) ? 1 : 0);
+  const goal = goals.get(month) || 0;
+  return {
+    mealGood: { cur: has(mealGoodDays), target: 1 },
+    waterGood: { cur: has(waterGoodDays), target: 1 },
+    sleepGood: { cur: has(sleepGoodDays), target: 1 },
+    trainedDay: { cur: has(trainedDays), target: 1 },
+    restDay: { cur: has(restDays), target: 1 },
+    streak3: { cur: runProgress(currentRun(trainedDays, today), 3), target: 3 },
+    cardioWeek: { cur: Math.min(2, inWeek(cardioDays)), target: 2 },
+    pr: { cur: Math.min(1, inWeek(new Set(prDays))), target: 1 },
+    fiveDayWeek: { cur: Math.min(5, inWeek(trainedDays)), target: 5 },
+    sleepStreak5: { cur: runProgress(currentRun(sleepGoodDays, today), 5), target: 5 },
+    measureMonth: { cur: Math.min(1, inMonth(new Set(measurementDays))), target: 1 },
+    goalMonth: goal ? { cur: Math.min(goal, inMonth(trainedDays)), target: goal } : { cur: 0, target: 0 },
+    perfectStreak14: { cur: runProgress(currentRun(perfectDays, today), 14), target: 14 },
+    name: { cur: (profile.first_name || '').trim() ? 1 : 0, target: 1 },
+    birth: { cur: profile.birth ? 1 : 0, target: 1 },
+    cycle: { cur: cycleFilled(profile.cycle) ? 1 : 0, target: 1 }
+  };
+}
+
 // Para mostrar "como ganhar sementes", independente do que já foi feito.
+// `short` é o nome curto que cabe por baixo do anel; `ic` o ícone; `page` para onde ir ao tocar.
 export const SEED_GUIDE = [
   {
-    group: 'dia', title: 'Todos os dias', items: [
-      { id: 'mealGood', label: 'Comer bem', seeds: 2 },
-      { id: 'waterGood', label: 'Beber a água toda', seeds: 2 },
-      { id: 'sleepGood', label: 'Dormir bem (7h ou mais)', seeds: 2 },
-      { id: 'trainedDay', label: 'Fazer o exercício do dia', seeds: 5 },
-      { id: 'restDay', label: 'Registar o descanso do dia', seeds: 1 }
+    group: 'dia', title: 'Hoje', items: [
+      { id: 'trainedDay', label: 'Fazer o exercício do dia', short: 'Treinar', ic: 'dumbbell', page: 'treino', seeds: 5 },
+      { id: 'sleepGood', label: 'Dormir bem (7h ou mais)', short: 'Sono 7h+', ic: 'moon', page: 'alimentacao', seeds: 2 },
+      { id: 'mealGood', label: 'Comer bem', short: 'Comida', ic: 'leaf', page: 'alimentacao', seeds: 2 },
+      { id: 'waterGood', label: 'Beber a água toda', short: 'Água', ic: 'droplet', page: 'alimentacao', seeds: 2 },
+      { id: 'restDay', label: 'Registar o descanso do dia', short: 'Descanso', ic: 'timer', seeds: 1 }
     ]
   },
   {
-    group: 'semana', title: 'Por semana', items: [
-      { id: 'streak3', label: '3 treinos em dias seguidos', seeds: 10 },
-      { id: 'cardioWeek', label: 'Cardio 2x na mesma semana', seeds: 5 },
-      { id: 'pr', label: 'Bater uma melhor carga', seeds: 5 },
-      { id: 'fiveDayWeek', label: '5 dias de treino na mesma semana', seeds: 10 }
+    group: 'semana', title: 'Semana', items: [
+      { id: 'streak3', label: '3 treinos em dias seguidos', short: '3 seguidos', ic: 'flame', seeds: 10 },
+      { id: 'cardioWeek', label: 'Cardio 2x na mesma semana', short: 'Cardio 2x', ic: 'activity', seeds: 5 },
+      { id: 'pr', label: 'Bater uma melhor carga', short: 'Nova marca', ic: 'trend', seeds: 5 },
+      { id: 'fiveDayWeek', label: '5 dias de treino na mesma semana', short: '5 treinos', ic: 'calendar', seeds: 10 }
     ]
   },
   {
-    group: 'mes', title: 'Por mês', items: [
-      { id: 'sleepStreak5', label: '5 noites bem dormidas seguidas', seeds: 10 },
-      { id: 'measureMonth', label: 'Atualizar medidas pelo menos 1x no mês', seeds: 10 },
-      { id: 'goalMonth', label: 'Cumprir o objetivo mensal', seeds: 25 },
-      { id: 'perfectStreak14', label: '14 dias de pleno seguidos', seeds: 25 }
+    group: 'mes', title: 'Mês', items: [
+      { id: 'sleepStreak5', label: '5 noites bem dormidas seguidas', short: '5 noites', ic: 'moon', seeds: 10 },
+      { id: 'measureMonth', label: 'Atualizar medidas pelo menos 1x no mês', short: 'Medidas', ic: 'activity', page: 'progresso', seeds: 10 },
+      { id: 'goalMonth', label: 'Cumprir o objetivo mensal', short: 'Objetivo', ic: 'target', page: 'progresso', seeds: 25 },
+      { id: 'perfectStreak14', label: '14 dias de pleno seguidos', short: '14 plenos', ic: 'star', seeds: 25 }
     ]
   },
   {
-    group: 'conta', title: 'Uma vez, na conta', items: [
-      { id: 'name', label: 'Preencher o nome', seeds: 5 },
-      { id: 'birth', label: 'Preencher a data de nascimento', seeds: 5 },
-      { id: 'cycle', label: 'Preencher os dados do ciclo', seeds: 5 }
+    group: 'conta', title: 'Conta', items: [
+      { id: 'name', label: 'Preencher o nome', short: 'Nome', ic: 'user', page: 'perfil', seeds: 5 },
+      { id: 'birth', label: 'Preencher a data de nascimento', short: 'Aniversário', ic: 'calendar', page: 'perfil', seeds: 5 },
+      { id: 'cycle', label: 'Preencher os dados do ciclo', short: 'Ciclo', ic: 'droplet', page: 'perfil', seeds: 5 }
     ]
   }
 ];
