@@ -14,6 +14,9 @@ function thresholdFor(levelIndex) {
   return v;
 }
 
+// Sementes de um registo de "Como te sentiste hoje?" (a opção 1..5 vale 1..5 sementes).
+export const moodSeeds = (mood) => Math.max(1, Math.min(5, Math.round(Number(mood) || 1)));
+
 const cumCache = [0];
 function cumulativeFor(level) {
   while (cumCache.length <= level) cumCache.push(cumCache[cumCache.length - 1] + thresholdFor(cumCache.length - 1));
@@ -78,7 +81,7 @@ export function computeSeeds(ctx) {
   const {
     profile = {}, trainedDays = new Set(), cardioDays = new Set(), sleepGoodDays = new Set(),
     mealGoodDays = new Set(), waterGoodDays = new Set(), restDays = new Set(), measurementDays = [],
-    prCount = 0, goals = new Map(), today
+    prCount = 0, goals = new Map(), moods = [], today
   } = ctx;
 
   const perfectDays = new Set([...trainedDays].filter((d) => sleepGoodDays.has(d) && mealGoodDays.has(d) && waterGoodDays.has(d)));
@@ -123,6 +126,9 @@ export function computeSeeds(ctx) {
   // Treino e descanso partilham o mesmo desafio diário: num dia em que se treinou, o descanso não soma.
   const restOnly = [...restDays].filter((d) => !trainedDays.has(d)).length;
   add('restDay', 'Registar o descanso do dia', restOnly * 1, 'dia', restOnly);
+  // "Como te sentiste hoje?": 1 a 5 sementes, conforme a opção escolhida (1 = Cansada … 5 = Ótima).
+  const moodSum = moods.reduce((s, m) => s + moodSeeds(m.mood), 0);
+  add('mood', 'Dizer como te sentiste', moodSum, 'dia', moods.length);
 
   const total = sources.reduce((s, x) => s + x.seeds, 0);
   const level = levelForSeeds(total);
@@ -158,7 +164,7 @@ export function challengeProgress(ctx) {
   const {
     profile = {}, trainedDays = new Set(), cardioDays = new Set(), sleepGoodDays = new Set(),
     mealGoodDays = new Set(), waterGoodDays = new Set(), restDays = new Set(), measurementDays = [],
-    prDays = [], goals = new Map(), today
+    prDays = [], goals = new Map(), moods = [], today
   } = ctx;
   const week = isoWeekKey(today), month = monthKeyOf(today);
   const inWeek = (days) => [...days].filter((d) => d <= today && isoWeekKey(d) === week).length;
@@ -167,6 +173,7 @@ export function challengeProgress(ctx) {
   const has = (set) => (set.has(today) ? 1 : 0);
   const goal = goals.get(month) || 0;
   return {
+    mood: (() => { const m = moods.find((x) => x.day === today); return { cur: m ? 1 : 0, target: 1, seeds: m ? moodSeeds(m.mood) : 0 }; })(),
     mealGood: { cur: has(mealGoodDays), target: 1 },
     waterGood: { cur: has(waterGoodDays), target: 1 },
     sleepGood: { cur: has(sleepGoodDays), target: 1 },
@@ -197,7 +204,8 @@ export const SEED_GUIDE = [
       },
       { id: 'sleepGood', label: 'Dormir bem (7h ou mais)', short: 'Sono 7h+', ic: 'moon', page: 'alimentacao', seeds: 2 },
       { id: 'mealGood', label: 'Comer bem', short: 'Comida', ic: 'leaf', page: 'alimentacao', seeds: 2 },
-      { id: 'waterGood', label: 'Beber a água toda', short: 'Água', ic: 'droplet', page: 'alimentacao', seeds: 2 }
+      { id: 'waterGood', label: 'Beber a água toda', short: 'Água', ic: 'droplet', page: 'alimentacao', seeds: 2 },
+      { id: 'mood', label: 'Dizer como te sentiste (1 a 5 sementes)', short: 'Humor', ic: 'sparkles', action: 'scroll-mood', seeds: 5, seedsLabel: '+1-5' }
     ]
   },
   {
