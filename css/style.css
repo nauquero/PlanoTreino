@@ -52,8 +52,6 @@ button { font-family:inherit; color:inherit; }
 .eyebrow { display:flex; flex-direction:column; line-height:1.25; }
 .eyebrow .hey { font-weight:700; font-size:16px; color:var(--pinkDark); }
 .brand-h1 { font-weight:700; font-size:18px; line-height:1.2; letter-spacing:-.01em; }
-.header-logo { height:20px; width:auto; opacity:.9; flex-shrink:0; }
-@media (max-width:360px) { .header-logo { display:none; } }
 .top-actions { display:flex; gap:8px; }
 .icon-btn { width:40px; height:40px; display:grid; place-items:center; border:1px solid var(--glassBorder); background:var(--glass); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-radius:14px; color:var(--pinkDark); cursor:pointer; box-shadow:0 4px 14px rgba(181,121,142,.12); transition:transform .15s var(--ease); }
 .icon-btn:active { transform:scale(.9); }
@@ -858,6 +856,11 @@ body.wl-open { overflow:hidden; }
 @keyframes bwb-flow { from { transform:translateX(0); } to { transform:translateX(-50%); } }
 .butty-xp-label { font-size:10.5px; color:var(--soft); margin-bottom:10px; display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
 .butty-xp-label .ico { color:var(--pinkDeep); }
+/* Sementes do "Como te sentiste hoje?" */
+.mood-seeds { display:flex; align-items:center; gap:5px; margin-top:10px; font-size:11px; color:var(--soft); }
+.mood-seeds .ico { color:var(--pinkDeep); flex-shrink:0; }
+.mood-seeds b { color:var(--pinkDeep); }
+
 /* Balão de fala da Butty com a mensagem engraçada do dia */
 .butty-bubble { position:relative; font-size:12.5px; line-height:1.45; color:var(--ink); background:rgba(255,255,255,.85); padding:9px 12px; border-radius:14px; margin:2px 0 4px; box-shadow:0 3px 10px rgba(181,121,142,.12); animation:rise .45s var(--ease) both; }
 .butty-bubble::before { content:''; position:absolute; left:30px; top:-7px; border:7px solid transparent; border-top:0; border-bottom-color:rgba(255,255,255,.85); }

@@ -14,7 +14,7 @@ import { restBgInit, restBgUpdate, restBgDone, restBgStop } from './rest-bg.js';
 import { MUSCLES, MUSCLE_LABEL, OBJECTIVES, OBJECTIVE_KEYS, OBJECTIVE_PLAN, planOf, quoteOf, greetingOf, cardioLabel, sportLabel } from './plan.js';
 import { openWelcome, WELCOME_PAGES, EDIT_PAGES, OBJECTIVE_PAGES } from './welcome.js';
 import { GENDERS, STATUSES, PHASES as CYCLE_PHASES, cycleDayInfo, lateDays, nextPeriod, pregnancyInfo, ageOf, diffDays } from './cycle.js';
-import { computeSeeds, challengeProgress, SEED_GUIDE } from './gamify.js';
+import { computeSeeds, challengeProgress, moodSeeds, SEED_GUIDE } from './gamify.js';
 
 // ---------- estado ----------
 const state = {
@@ -1306,6 +1306,7 @@ function buttySeedCtx() {
     measurementDays: state.data.measurements.map((m) => m.date),
     prCount: buttyPRCount(),
     prDays: buttyPRDays(),
+    moods: state.data.moods,
     goals: state.data.goals,
     today: today()
   };
@@ -1472,9 +1473,9 @@ function challengesHtml() {
         const noGoal = p.target === 0;
         const done = !noGoal && p.cur >= p.target;
         const frac = noGoal ? 0 : Math.min(1, p.cur / p.target);
-        const sub = noGoal ? 'Sem objetivo' : done ? 'Feito!' : p.target > 1 ? `${p.cur}/${p.target}` : 'Por fazer';
-        const tag = it.page ? 'button' : 'div';
-        const attrs = it.page ? `type="button" data-action="go-page" data-page="${it.page}"` : '';
+        const sub = noGoal ? 'Sem objetivo' : done ? (p.seeds ? `Feito! +${p.seeds}` : 'Feito!') : p.target > 1 ? `${p.cur}/${p.target}` : 'Por fazer';
+        const tag = it.page || it.action ? 'button' : 'div';
+        const attrs = it.action ? `type="button" data-action="${it.action}"` : it.page ? `type="button" data-action="go-page" data-page="${it.page}"` : '';
         return `<${tag} class="chal-tile${done ? ' done' : ''}" ${attrs} title="${esc(it.label)}" aria-label="${esc(it.label)}: ${esc(sub)}">
           <span class="chal-ring">
             <svg viewBox="0 0 50 50" aria-hidden="true">
@@ -1482,7 +1483,7 @@ function challengesHtml() {
               <circle class="cr-fill" cx="25" cy="25" r="${CHAL_R}" stroke-dasharray="${CHAL_C.toFixed(2)}" stroke-dashoffset="${(CHAL_C * (1 - frac)).toFixed(2)}"></circle>
             </svg>
             <span class="chal-ico">${icon(done ? 'check' : it.ic, 18)}</span>
-            <span class="chal-seeds">+${it.seeds}</span>
+            <span class="chal-seeds">${done && p.seeds ? `+${p.seeds}` : it.seedsLabel || `+${it.seeds}`}</span>
           </span>
           <span class="chal-name">${esc(it.short)}</span>
           <span class="chal-sub">${esc(sub)}</span>
@@ -1560,6 +1561,7 @@ function moodCheckinHtml() {
       ${MOOD_FACES.map((m, i) => `<button type="button" class="mood-btn${existing && Number(existing.mood) === i + 1 ? ' on' : ''}" data-action="save-mood" data-mood="${i + 1}" role="radio" aria-checked="${!!existing && Number(existing.mood) === i + 1}" aria-label="${esc(m.label)}">
         <img src="${BUTTY_IMG(m.img)}" alt=""><span>${esc(m.label)}</span></button>`).join('')}
     </div>
+    <p class="mood-seeds">${icon('leaf', 12)}${existing ? `Hoje deste <b>+${moodSeeds(existing.mood)} sementes</b> à Butty.` : 'Cada resposta dá à Butty 1 a 5 sementes (Cansada +1 … Ótima +5).'}</p>
   </div>`;
 }
 
@@ -1573,6 +1575,7 @@ async function saveMood(btn) {
     render();
     burst(cx, cy, 20);
     popSuccess();
+    toast(`+${moodSeeds(mood)} ${moodSeeds(mood) === 1 ? 'semente' : 'sementes'} para a Butty 🌱`);
   } catch (e) {
     toast(errorMessage(e.code));
     render();
@@ -2668,6 +2671,7 @@ function onClick(ev) {
     case 'period-today': periodStartedToday(el); return;
     case 'toggle-plan-card': state.showPlanCard = !state.showPlanCard; render(); return;
     case 'challenge-tab': state.challengeTab = d.tab; render(); return;
+    case 'scroll-mood': document.querySelector('.mood-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return;
     case 'cycle-day': state.cycleDay = d.date; render(); return;
     case 'edit-log':
       state.editingLog = Number(d.id); state.openExercise = d.ex; state.confirm = null;
