@@ -856,6 +856,8 @@ body.wl-open { overflow:hidden; }
 @keyframes bwb-flow { from { transform:translateX(0); } to { transform:translateX(-50%); } }
 .butty-xp-label { font-size:10.5px; color:var(--soft); margin-bottom:10px; display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
 .butty-xp-label .ico { color:var(--pinkDeep); }
+.bs-lvl-note { font-size:10.5px; color:var(--soft); }
+
 /* Sementes do "Como te sentiste hoje?" */
 .mood-seeds { display:flex; align-items:center; gap:5px; margin-top:10px; font-size:11px; color:var(--soft); }
 .mood-seeds .ico { color:var(--pinkDeep); flex-shrink:0; }
@@ -902,13 +904,6 @@ button.chal-tile:active { transform:scale(.94); }
 .butty-badges { display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; }
 .bb-chip { display:grid; place-items:center; width:30px; height:30px; border-radius:999px; background:rgba(255,255,255,.75); color:#C9BCC9; }
 .bb-chip.on { background:linear-gradient(135deg,#FBDCC4,#F5C6D8); color:var(--pinkDeep); box-shadow:0 4px 10px rgba(181,121,142,.22); }
-.achv-list { display:flex; flex-direction:column; gap:6px; }
-.achv-row { display:flex; align-items:center; gap:8px; padding:9px 12px; border-radius:14px; background:rgba(255,255,255,.75); color:var(--soft); }
-.achv-row .br-ico { display:grid; place-items:center; width:20px; height:20px; border-radius:999px; background:#EFE3EC; color:#B69BB6; flex-shrink:0; }
-.achv-row.on { opacity:1; }
-.achv-row:not(.on) { opacity:.55; }
-.achv-row.on .br-ico { background:var(--mint); color:var(--mintDark); }
-.achv-row.on .br-note { color:var(--mintDark); }
 .br-label { flex:1; font-size:12.5px; font-weight:600; color:var(--ink); }
 .br-note { font-size:11px; color:var(--soft); }
 
@@ -917,10 +912,6 @@ button.chal-tile:active { transform:scale(.94); }
 .bs-img { position:relative; z-index:1; width:60px; height:60px; object-fit:contain; flex-shrink:0; filter:drop-shadow(0 0 9px rgba(255,255,255,.9)) drop-shadow(0 4px 8px rgba(181,121,142,.22)); }
 .bs-text { position:relative; z-index:1; flex:1; }
 .bs-text h2 { font-size:14.5px; margin-bottom:5px; }
-.bs-dots { display:flex; align-items:center; gap:4px; flex-wrap:wrap; font-size:10px; color:var(--soft); }
-.bs-dot { display:grid; place-items:center; width:16px; height:16px; border-radius:999px; background:#EFE3EC; color:#B69BB6; }
-.bs-dot.on { background:var(--mint); color:var(--mintDark); }
-.bs-dots span { margin-right:6px; }
 
 /* ---------- Como te sentiste hoje? ---------- */
 .mood-card { position:relative; }

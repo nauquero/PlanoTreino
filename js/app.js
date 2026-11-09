@@ -2006,27 +2006,17 @@ const SUBS = {
   alimentacao: [['comida', 'Alimentação', 'leaf'], ['sono', 'Sono', 'moon']]
 };
 
+// No Perfil, a Butty mostra só o nível e a barra de progresso dentro do nível.
 function buttySummaryHtml() {
-  const { exerciseOk, sleepOk, mealOk, waterOk } = buttyPillars();
   const prog = buttyProgress();
-  const dot = (ok) => `<span class="bs-dot${ok ? ' on' : ''}">${icon(ok ? 'check' : 'minus', 11)}</span>`;
   return `<div class="card butty-summary tilt" data-action="go-page" data-page="inicio">
     <div class="bs-glow" aria-hidden="true"></div>
     <img class="bs-img" src="${BUTTY_IMG(prog.cur.img)}" alt="Butty, a mascote">
     <div class="bs-text">
       <h2>Nível ${prog.level} · ${esc(prog.cur.name)}</h2>
       ${buttyWaveBarHtml(prog.pct, { small: true })}
-      <div class="bs-dots">${dot(exerciseOk)}<span>Exercício</span>${dot(sleepOk)}<span>Sono</span>${dot(mealOk)}<span>Alimentação</span>${dot(waterOk)}<span>Água</span></div>
+      <div class="bs-lvl-note">${prog.inLevel}/${prog.needed} sementes para o nível ${prog.level + 1}</div>
     </div>
-  </div>`;
-}
-
-function buttyAchievementsHtml() {
-  return `<div class="card">
-    <h2>${icon('star', 18)} Conquistas da Butty</h2>
-    <div class="achv-list">${buttyBadges(buttyProgress().xp).map((b) => `<div class="achv-row${b.done ? ' on' : ''}">
-      <span class="br-ico">${icon(b.ic, 14)}</span><span class="br-label">${esc(b.label)}</span>${b.done ? `<span class="br-note">${icon('check', 13)}</span>` : ''}
-    </div>`).join('')}</div>
   </div>`;
 }
 
@@ -2039,7 +2029,6 @@ function renderPerfil() {
   pageEl.innerHTML = `
     ${perfilHeroHtml()}
     ${buttySummaryHtml()}
-    ${buttyAchievementsHtml()}
     ${planCardHtml()}
     <div class="card" id="profile-form">
       <h2>${icon('user', 18)} Os meus dados</h2>
