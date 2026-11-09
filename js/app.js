@@ -1455,10 +1455,10 @@ function buttyWaveBarHtml(pct, { small = false } = {}) {
 
 // Desafios em formato visual: um separador por período e, em cada um, anéis que enchem
 // à medida que o desafio avança. Um desafio cumprido fica verde com um visto.
+const CHAL_R = 21, CHAL_C = 2 * Math.PI * CHAL_R;
 function challengesHtml() {
   const prog = challengeProgress(buttySeedCtx());
   const tab = SEED_GUIDE.some((g) => g.group === state.challengeTab) ? state.challengeTab : 'dia';
-  const R = 21, C = 2 * Math.PI * R;
   const doneIn = (g) => g.items.filter((it) => { const p = prog[it.id]; return p.target > 0 && p.cur >= p.target; }).length;
   const group = SEED_GUIDE.find((g) => g.group === tab);
   return `<div class="chal">
@@ -1467,7 +1467,7 @@ function challengesHtml() {
         ${esc(g.title)}<span class="chal-count">${doneIn(g)}/${g.items.length}</span></button>`).join('')}
     </div>
     <div class="chal-grid" style="--n:${group.items.length}">
-      ${group.items.map((it) => {
+      ${group.items.map((it) => (it.split ? splitTileHtml(it, prog[it.id]) : (() => {
         const p = prog[it.id];
         const noGoal = p.target === 0;
         const done = !noGoal && p.cur >= p.target;
@@ -1478,8 +1478,8 @@ function challengesHtml() {
         return `<${tag} class="chal-tile${done ? ' done' : ''}" ${attrs} title="${esc(it.label)}" aria-label="${esc(it.label)}: ${esc(sub)}">
           <span class="chal-ring">
             <svg viewBox="0 0 50 50" aria-hidden="true">
-              <circle class="cr-track" cx="25" cy="25" r="${R}"></circle>
-              <circle class="cr-fill" cx="25" cy="25" r="${R}" stroke-dasharray="${C.toFixed(2)}" stroke-dashoffset="${(C * (1 - frac)).toFixed(2)}"></circle>
+              <circle class="cr-track" cx="25" cy="25" r="${CHAL_R}"></circle>
+              <circle class="cr-fill" cx="25" cy="25" r="${CHAL_R}" stroke-dasharray="${CHAL_C.toFixed(2)}" stroke-dashoffset="${(CHAL_C * (1 - frac)).toFixed(2)}"></circle>
             </svg>
             <span class="chal-ico">${icon(done ? 'check' : it.ic, 18)}</span>
             <span class="chal-seeds">+${it.seeds}</span>
@@ -1487,9 +1487,37 @@ function challengesHtml() {
           <span class="chal-name">${esc(it.short)}</span>
           <span class="chal-sub">${esc(sub)}</span>
         </${tag}>`;
-      }).join('')}
+      })())).join('')}
     </div>
   </div>`;
+}
+
+// Bola dividida ao meio para desafios "um ou outro" (treino +5 à esquerda, descanso +1 à direita):
+// acende a metade do que foi feito hoje.
+function splitTileHtml(it, p) {
+  const [left, right] = it.halves;
+  const on = it.halves.find((h) => h.mode === p.mode);
+  // metade esquerda e direita como arcos de cima para baixo, com uma folga em cima e em baixo
+  const pt = (deg) => { const r = (deg - 90) * Math.PI / 180; return `${(25 + CHAL_R * Math.cos(r)).toFixed(2)},${(25 + CHAL_R * Math.sin(r)).toFixed(2)}`; };
+  const g = 14;
+  const arcR = `M${pt(g)} A${CHAL_R},${CHAL_R} 0 0 1 ${pt(180 - g)}`;
+  const arcL = `M${pt(360 - g)} A${CHAL_R},${CHAL_R} 0 0 0 ${pt(180 + g)}`;
+  const sub = on ? `${on.done} +${on.seeds}` : 'Por fazer';
+  return `<button type="button" class="chal-tile split${on ? ` done is-${on.mode}` : ''}" data-action="go-page" data-page="${it.page}" title="${esc(it.label)}" aria-label="${esc(it.label)}: ${esc(sub)}">
+    <span class="chal-ring">
+      <svg viewBox="0 0 50 50" aria-hidden="true">
+        <circle class="cr-bg" cx="25" cy="25" r="${CHAL_R}"></circle>
+        <line class="cr-div" x1="25" y1="6" x2="25" y2="44"></line>
+        <path class="cr-half l${p.mode === left.mode ? ' on' : ''}" d="${arcL}"></path>
+        <path class="cr-half r${p.mode === right.mode ? ' on' : ''}" d="${arcR}"></path>
+      </svg>
+      <span class="chal-half l${p.mode === left.mode ? ' on' : ''}">${icon(left.ic, 13)}</span>
+      <span class="chal-half r${p.mode === right.mode ? ' on' : ''}">${icon(right.ic, 13)}</span>
+      <span class="chal-seeds">+${left.seeds}/+${right.seeds}</span>
+    </span>
+    <span class="chal-name">${esc(it.short)}</span>
+    <span class="chal-sub">${esc(sub)}</span>
+  </button>`;
 }
 
 function buttyHtml() {

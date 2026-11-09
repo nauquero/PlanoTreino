@@ -120,7 +120,9 @@ export function computeSeeds(ctx) {
   add('waterGood', 'Beber a água toda', waterGoodDays.size * 2, 'dia', waterGoodDays.size);
   add('sleepGood', 'Dormir bem', sleepGoodDays.size * 2, 'dia', sleepGoodDays.size);
   add('trainedDay', 'Fazer o exercício do dia', trainedDays.size * 5, 'dia', trainedDays.size);
-  add('restDay', 'Registar o descanso do dia', restDays.size * 1, 'dia', restDays.size);
+  // Treino e descanso partilham o mesmo desafio diário: num dia em que se treinou, o descanso não soma.
+  const restOnly = [...restDays].filter((d) => !trainedDays.has(d)).length;
+  add('restDay', 'Registar o descanso do dia', restOnly * 1, 'dia', restOnly);
 
   const total = sources.reduce((s, x) => s + x.seeds, 0);
   const level = levelForSeeds(total);
@@ -168,8 +170,8 @@ export function challengeProgress(ctx) {
     mealGood: { cur: has(mealGoodDays), target: 1 },
     waterGood: { cur: has(waterGoodDays), target: 1 },
     sleepGood: { cur: has(sleepGoodDays), target: 1 },
-    trainedDay: { cur: has(trainedDays), target: 1 },
-    restDay: { cur: has(restDays), target: 1 },
+    // Treino ou descanso: uma só bola dividida ao meio (treino +5, descanso +1).
+    trainOrRest: trainedDays.has(today) ? { cur: 1, target: 1, mode: 'train' } : restDays.has(today) ? { cur: 1, target: 1, mode: 'rest' } : { cur: 0, target: 1, mode: null },
     streak3: { cur: runProgress(currentRun(trainedDays, today), 3), target: 3 },
     cardioWeek: { cur: Math.min(2, inWeek(cardioDays)), target: 2 },
     pr: { cur: Math.min(1, inWeek(new Set(prDays))), target: 1 },
@@ -189,11 +191,13 @@ export function challengeProgress(ctx) {
 export const SEED_GUIDE = [
   {
     group: 'dia', title: 'Hoje', items: [
-      { id: 'trainedDay', label: 'Fazer o exercício do dia', short: 'Treinar', ic: 'dumbbell', page: 'treino', seeds: 5 },
+      {
+        id: 'trainOrRest', label: 'Treinar (+5) ou registar o descanso (+1)', short: 'Treino ou descanso', split: true, page: 'treino',
+        halves: [{ mode: 'train', ic: 'dumbbell', seeds: 5, done: 'Treinou!' }, { mode: 'rest', ic: 'timer', seeds: 1, done: 'Descansou' }]
+      },
       { id: 'sleepGood', label: 'Dormir bem (7h ou mais)', short: 'Sono 7h+', ic: 'moon', page: 'alimentacao', seeds: 2 },
       { id: 'mealGood', label: 'Comer bem', short: 'Comida', ic: 'leaf', page: 'alimentacao', seeds: 2 },
-      { id: 'waterGood', label: 'Beber a água toda', short: 'Água', ic: 'droplet', page: 'alimentacao', seeds: 2 },
-      { id: 'restDay', label: 'Registar o descanso do dia', short: 'Descanso', ic: 'timer', seeds: 1 }
+      { id: 'waterGood', label: 'Beber a água toda', short: 'Água', ic: 'droplet', page: 'alimentacao', seeds: 2 }
     ]
   },
   {
