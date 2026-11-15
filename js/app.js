@@ -15,6 +15,7 @@ import { MUSCLES, MUSCLE_LABEL, OBJECTIVES, OBJECTIVE_KEYS, OBJECTIVE_PLAN, plan
 import { openWelcome, WELCOME_PAGES, EDIT_PAGES, OBJECTIVE_PAGES } from './welcome.js';
 import { GENDERS, STATUSES, PHASES as CYCLE_PHASES, cycleDayInfo, lateDays, nextPeriod, pregnancyInfo, ageOf, diffDays } from './cycle.js';
 import { computeSeeds, challengeProgress, moodSeeds, SEED_GUIDE } from './gamify.js';
+import { buttyMonth, buttyMonthImg, isBirthday, BIRTHDAY_LINES } from './butty-months.js';
 
 // ---------- estado ----------
 const state = {
@@ -1037,9 +1038,27 @@ function waterCheckinHtml() {
   </div>`;
 }
 
+// Escolha do dia ("Hoje descanso" / "Sim, bora!") guardada neste dispositivo,
+// para não voltar a perguntar durante o dia (mesmo que a app feche e volte a abrir).
+const DAY_CHOICE_KEY = () => `pt-day-choice-${uid()}`;
+function dayChoice() {
+  const t = today();
+  if (state.restDay === t) return 'rest';
+  try {
+    const c = JSON.parse(localStorage.getItem(DAY_CHOICE_KEY()) || 'null');
+    if (c && c.day === t) return c.choice;
+  } catch { /* ignora */ }
+  return state.data.restDays.includes(t) ? 'rest' : null;
+}
+function setDayChoice(choice) {
+  const t = today();
+  state.restDay = choice === 'rest' ? t : null;
+  try { localStorage.setItem(DAY_CHOICE_KEY(), JSON.stringify({ day: t, choice })); } catch { /* ignora */ }
+}
+
 async function saveRestDay() {
   const t = today();
-  state.restDay = t;
+  setDayChoice('rest');
   toast('Descanso é treino também. Até amanhã!');
   render();
   if (state.data.restDays.includes(t)) return;
@@ -1418,7 +1437,18 @@ const BUTTY_QUIPS = {
   ]
 };
 
+// Em parte dos dias (sempre os mesmos durante o dia), a Butty diz uma frase do mês.
 function buttyQuip() {
+  const t = today();
+  const hash = (str) => str.split('').reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+  if (birthdayToday()) return BIRTHDAY_LINES[hash(`${t}-bday`) % BIRTHDAY_LINES.length];
+  const base = baseQuip();
+  const m = buttyMonth();
+  if (base.key === 'pleno' || hash(`${t}-month`) % 3 !== 0) return base.text;
+  return m.lines[hash(t) % m.lines.length];
+}
+
+function baseQuip() {
   const { exerciseOk, sleepOk, mealOk, waterOk, restOk, sleepEntry, mealEntry, waterEntry } = buttyPillars();
   const core = [exerciseOk, sleepOk, mealOk, waterOk];
   const done = core.filter(Boolean).length;
@@ -1435,7 +1465,43 @@ function buttyQuip() {
   else key = 'meio';
   const pool = BUTTY_QUIPS[key];
   const seed = `${today()}-${key}`.split('').reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
-  return pool[seed % pool.length];
+  return { key, text: pool[seed % pool.length] };
+}
+
+// Cores e decoração do mês no cartão da Butty
+function monthStyle(m) { return `--bm1:${m.c1};--bm2:${m.c2}`; }
+function monthDecoHtml(deco) {
+  return `<span class="butty-deco" aria-hidden="true">${deco.map((e, i) => `<span class="bd d${i + 1}">${e}</span>`).join('')}</span>`;
+}
+
+// ---------- Aniversário ----------
+function birthdayToday() { return isBirthday(profileOf().birth, today()); }
+
+function birthdayHtml() {
+  if (!birthdayToday()) return '';
+  const age = ageOf(profileOf().birth, today());
+  return `<div class="card bday-card tilt" data-action="bday-party">
+    <span class="bday-conf" aria-hidden="true"><span>🎈</span><span>🎉</span><span>🎂</span><span>🎁</span><span>🎊</span></span>
+    <div class="bday-top">
+      <img class="bday-butty" src="${BUTTY_IMG('face-joy')}" alt="">
+      <div>
+        <div class="bday-kicker">Hoje é um dia especial</div>
+        <h2 class="bday-title">Parabéns, ${esc(displayName())}! 🎂</h2>
+      </div>
+    </div>
+    <p class="bday-text">${age ? `<b>${age} anos</b> de pura força! ` : ''}Eu e a floresta inteira desejamos-te um ano cheio de saúde, energia, gargalhadas e treinos que te deixem orgulhosa. Hoje mimas-te sem culpa: o bolo também faz parte do plano. 💗</p>
+    <p class="bday-hint">Toca aqui para mais confettis 🎊</p>
+  </div>`;
+}
+
+function celebrateBirthday(force = false) {
+  if (!birthdayToday()) return;
+  const key = `pt-bday-${uid()}-${today()}`;
+  try { if (!force && localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch { /* ignora */ }
+  const w = innerWidth, h = innerHeight;
+  [[w / 2, h / 3, 0], [w / 4, h / 2, 250], [w * 3 / 4, h / 2, 500]].forEach(([x, y, d]) => setTimeout(() => burst(x, y, 40), d));
+  popSuccess();
+  if (!force) toast(`Feliz aniversário, ${displayName()}! 🎉`);
 }
 
 function buttyBadgesHtml(totalSeeds) {
@@ -1524,13 +1590,19 @@ function splitTileHtml(it, p) {
 function buttyHtml() {
   const prog = buttyProgress();
   const streak = buttyStreak();
-  return `<div class="card butty-card tilt">
-    <span class="fluffy tr" aria-hidden="true"></span>
+  const m = buttyMonth();
+  const bday = birthdayToday();
+  return `<div class="card butty-card tilt${bday ? ' bday' : ''}" style="${monthStyle(m)}">
+    ${monthDecoHtml(bday ? ['🎈', '🎁', '🎊'] : m.deco)}
     <div class="butty-head">
-      <img class="butty-img" src="${BUTTY_IMG(prog.cur.img)}" alt="Butty, a mascote">
+      <div class="butty-avatar">
+        <img class="butty-img" src="${buttyMonthImg(prog.cur.img)}" alt="${esc(m.title)}, a mascote">
+        <span class="butty-acc" aria-hidden="true">${bday ? '🥳' : m.acc}</span>
+      </div>
       <div class="butty-text">
         <div class="butty-lvl-row"><span class="butty-lvl-chip">Nível ${prog.level}</span>${streak > 1 ? `<span class="butty-streak-chip">${icon('flame', 12)}${streak} dias</span>` : ''}</div>
         <h2>${esc(prog.cur.name)}</h2>
+        <span class="butty-month-chip">${bday ? '🎂 Butty de aniversário' : `${m.acc} ${esc(m.title)}`}</span>
       </div>
     </div>
     <p class="butty-bubble">${esc(buttyQuip())}</p>
@@ -1633,11 +1705,21 @@ function renderInicio() {
       <p class="today-sub">${streak > 1 ? `Já são ${streak} dias seguidos. ` : ''}Agora hidrata-te, come bem e descansa: é aí que o músculo cresce.</p>
       <div class="today-actions"><button class="save-btn" data-action="go-page" data-page="progresso">${icon('trend', 16)} Ver o meu progresso</button></div>
     </div>`;
-  } else if (state.restDay === t) {
+  } else if (dayChoice() === 'rest') {
     todayCard = `<div class="card today-card rest">
       <div class="today-q">${icon('moon', 22)}<h2>Hoje é dia de descanso</h2></div>
       <p class="today-sub">Descansar também faz parte do plano. Dorme bem, bebe água e amanhã voltas com tudo.</p>
       <div class="today-actions"><button class="save-btn alt" data-action="home-go">${icon('dumbbell', 16)} Afinal vou treinar</button></div>
+    </div>`;
+  } else if (dayChoice() === 'train') {
+    todayCard = `<div class="card today-card">
+      <div class="today-q"><span class="today-bolt" aria-hidden="true">${icon('flame', 22)}</span><h2>Hoje é dia de treino!</h2></div>
+      ${sug ? `<p class="today-sub">Sugestão para hoje: <b>${esc(sug.label)}</b>. Quando acabares, marca o treino como feito.</p>` : '<p class="today-sub">Quando acabares, marca o treino como feito.</p>'}
+      <div class="today-actions">
+        <button class="save-btn" data-action="home-go">${icon('dumbbell', 16)} Ir para o treino</button>
+        <button class="save-btn alt" data-action="toggle-day" data-date="${t}">${icon('check', 16)} Já treinei</button>
+        <button class="save-btn ghost" data-action="home-rest">${icon('moon', 16)} Afinal descanso</button>
+      </div>
     </div>`;
   } else {
     todayCard = `<div class="card today-card">
@@ -1660,6 +1742,7 @@ function renderInicio() {
       <p class="hh-quote">“${esc(quoteOf(t))}”</p>
     </div>
 
+    ${birthdayHtml()}
     ${buttyHtml()}
     ${moodCheckinHtml()}
 
@@ -2009,9 +2092,9 @@ const SUBS = {
 // No Perfil, a Butty mostra só o nível e a barra de progresso dentro do nível.
 function buttySummaryHtml() {
   const prog = buttyProgress();
-  return `<div class="card butty-summary tilt" data-action="go-page" data-page="inicio">
+  return `<div class="card butty-summary tilt" data-action="go-page" data-page="inicio" style="${monthStyle(buttyMonth())}">
     <div class="bs-glow" aria-hidden="true"></div>
-    <img class="bs-img" src="${BUTTY_IMG(prog.cur.img)}" alt="Butty, a mascote">
+    <div class="butty-avatar sm"><img class="bs-img" src="${buttyMonthImg(prog.cur.img)}" alt="Butty, a mascote"><span class="butty-acc" aria-hidden="true">${birthdayToday() ? '🥳' : buttyMonth().acc}</span></div>
     <div class="bs-text">
       <h2>Nível ${prog.level} · ${esc(prog.cur.name)}</h2>
       ${buttyWaveBarHtml(prog.pct, { small: true })}
@@ -2334,9 +2417,9 @@ function buttyMonthStats() {
 function buttyProgressHtml() {
   const { radiant } = buttyMonthStats();
   const prog = buttyProgress();
-  return `<div class="card butty-summary tilt" data-action="go-page" data-page="inicio">
+  return `<div class="card butty-summary tilt" data-action="go-page" data-page="inicio" style="${monthStyle(buttyMonth())}">
     <div class="bs-glow" aria-hidden="true"></div>
-    <img class="bs-img" src="${BUTTY_IMG(prog.cur.img)}" alt="Butty, a mascote">
+    <div class="butty-avatar sm"><img class="bs-img" src="${buttyMonthImg(prog.cur.img)}" alt="Butty, a mascote"><span class="butty-acc" aria-hidden="true">${birthdayToday() ? '🥳' : buttyMonth().acc}</span></div>
     <div class="bs-text">
       <h2>Como anda a Butty · Nível ${prog.level}</h2>
       ${buttyWaveBarHtml(prog.pct, { small: true })}
@@ -2612,7 +2695,7 @@ function onClick(ev) {
     case 'toggle-groups': state.allGroups = !state.allGroups; state.openExercise = null; ensureGroupVisible(); break;
     case 'home-go': {
       const sug = suggestToday();
-      if (state.restDay === today()) state.restDay = null;
+      setDayChoice('train');
       state.page = 'treino'; state.openExercise = null;
       if (sug) state.group = sug.key;
       ensureGroupVisible();
@@ -2620,6 +2703,7 @@ function onClick(ev) {
       break;
     }
     case 'home-rest': saveRestDay(); return;
+    case 'bday-party': celebrateBirthday(true); return;
     case 'home-goal': setMonthGoal(el); return;
     case 'start-plan': startWelcome('first'); return;
     case 'edit-plan': startWelcome('edit'); return;
@@ -2904,7 +2988,8 @@ async function startSession(profile, pin) {
   $('app').hidden = false;
   render(true);
   window.scrollTo(0, 0);
-  if (!outdated && !goalFor(monthKeyOf(new Date()))) setTimeout(() => toast('Novo mês, nova meta! Define-a na aba Progresso.'), 900);
+  if (birthdayToday()) setTimeout(() => celebrateBirthday(), 600);
+  else if (!outdated && !goalFor(monthKeyOf(new Date()))) setTimeout(() => toast('Novo mês, nova meta! Define-a na aba Progresso.'), 900);
 
   if (profileOf().new_account && !planCfg().done && !isGaby()) {
     openButtyIntro(() => startWelcome('first')); // conta nova: conhece a Butty e depois as boas-vindas do plano

@@ -54,6 +54,12 @@ A aba "Alimentação" passou a chamar-se "Saúde" e agora também tem o registo 
 
 Quem cria conta nova conhece a Butty numa apresentação interativa curta, antes das perguntas do plano de treino.
 
+**Butty do mês:** a Butty muda de visual todos os meses (acessório, decoração, cores e frases próprias: Natal em dezembro, Halloween em outubro, etc.). Os temas estão em `js/butty-months.js`. Para usar desenhos próprios de um mês, põe a imagem em `icons/butty/meses/` com o número do mês à frente (ex.: `12-face-joy.webp`) e acrescenta o nome (`'face-joy'`) à lista `imgs` desse mês.
+
+**Aniversário:** no dia de anos (data de nascimento do Perfil) aparece um cartão especial de parabéns no Início, com confettis, e a Butty veste-se a rigor.
+
+**"Hoje descanso" / "Sim, bora!":** a escolha fica guardada durante o dia todo, mesmo que a app feche e volte a abrir.
+
 ### Treino da Gabriela
 Uma pessoa com o objetivo `emagrecimento` (ver `supabase/novo-utilizador.sql`) vê um treino diferente: plano de 12 semanas (5 de outubro a 27 de dezembro) a fazer em casa, 3 sessões por semana. O plano está em `js/gaby-data.js` e os vídeos do treino principal em `plano-principal.json`. Para as restantes pessoas nada muda.
 

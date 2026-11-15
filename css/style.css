@@ -837,7 +837,38 @@ body.wl-open { overflow:hidden; }
 .meal-btn.on { background:linear-gradient(135deg,#DDF2E9,var(--mint)); border-color:transparent; color:var(--mintDark); box-shadow:0 6px 14px rgba(46,110,86,.18); }
 
 /* ---------- Butty ---------- */
-.butty-card { position:relative; background:linear-gradient(135deg,rgba(251,220,196,.5),rgba(245,198,216,.4)); }
+.butty-card { position:relative; overflow:hidden; background:linear-gradient(135deg,color-mix(in srgb,var(--bm1,#FBDCC4) 60%,transparent),color-mix(in srgb,var(--bm2,#F5C6D8) 50%,transparent)); }
+/* Butty do mês: acessório na cabeça, decoração a flutuar e etiqueta com o tema */
+.butty-avatar { position:relative; z-index:1; flex-shrink:0; width:76px; height:76px; }
+.butty-avatar.sm { width:60px; height:60px; }
+.butty-acc { position:absolute; top:-8px; right:-6px; font-size:26px; line-height:1; transform:rotate(14deg); filter:drop-shadow(0 2px 3px rgba(0,0,0,.15)); animation:acc-bob 3s ease-in-out infinite; pointer-events:none; }
+.butty-avatar.sm .butty-acc { font-size:20px; top:-6px; right:-5px; }
+@keyframes acc-bob { 0%,100% { transform:rotate(14deg) translateY(0); } 50% { transform:rotate(8deg) translateY(-3px); } }
+.butty-deco { position:absolute; inset:0; pointer-events:none; z-index:0; }
+.butty-deco .bd { position:absolute; font-size:18px; opacity:.55; animation:deco-float 6s ease-in-out infinite; }
+.butty-deco .d1 { top:10px; right:16px; }
+.butty-deco .d2 { top:46px; right:52px; font-size:13px; animation-delay:-2s; }
+.butty-deco .d3 { top:14px; right:88px; font-size:11px; animation-delay:-4s; }
+@keyframes deco-float { 0%,100% { transform:translateY(0) rotate(0); } 50% { transform:translateY(-6px) rotate(10deg); } }
+.butty-month-chip { display:inline-flex; align-items:center; gap:4px; margin-top:4px; font-weight:600; font-size:10.5px; color:var(--soft); background:rgba(255,255,255,.65); padding:3px 9px; border-radius:999px; }
+.butty-card.bday { box-shadow:0 0 0 2px rgba(227,148,181,.45), 0 10px 24px rgba(181,121,142,.18); }
+/* Cartão de aniversário */
+.bday-card { position:relative; overflow:hidden; cursor:pointer; background:linear-gradient(135deg,#FFE3EE,#FCE7B8 55%,#D9CFF0); }
+.bday-top { position:relative; z-index:1; display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+.bday-butty { width:64px; height:64px; object-fit:contain; flex-shrink:0; filter:drop-shadow(0 0 10px rgba(255,255,255,.9)); animation:bday-hop 1.6s var(--ease) infinite; }
+@keyframes bday-hop { 0%,100% { transform:translateY(0); } 30% { transform:translateY(-8px) rotate(-4deg); } 60% { transform:translateY(0) rotate(3deg); } }
+.bday-kicker { font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--pinkDeep); }
+.bday-title { font-size:20px; margin:2px 0 0; }
+.bday-text { position:relative; z-index:1; font-size:13px; line-height:1.55; }
+.bday-hint { position:relative; z-index:1; font-size:11px; color:var(--soft); margin-top:8px; }
+.bday-conf { position:absolute; inset:0; pointer-events:none; }
+.bday-conf span { position:absolute; font-size:18px; opacity:.7; animation:deco-float 4s ease-in-out infinite; }
+.bday-conf span:nth-child(1) { top:8px; right:14px; }
+.bday-conf span:nth-child(2) { top:40px; right:46px; font-size:14px; animation-delay:-1s; }
+.bday-conf span:nth-child(3) { bottom:10px; right:18px; animation-delay:-2s; }
+.bday-conf span:nth-child(4) { bottom:34px; right:70px; font-size:13px; animation-delay:-3s; }
+.bday-conf span:nth-child(5) { top:10px; right:90px; font-size:12px; animation-delay:-1.5s; }
+@media (prefers-reduced-motion: reduce) { .butty-acc, .butty-deco .bd, .bday-butty, .bday-conf span { animation:none; } }
 .butty-head { position:relative; display:flex; align-items:center; gap:14px; margin-bottom:12px; }
 .butty-head::before { content:''; position:absolute; left:2px; top:50%; width:92px; height:92px; transform:translateY(-50%); background:radial-gradient(circle, rgba(255,255,255,.95) 0%, rgba(255,241,246,.6) 45%, rgba(255,241,246,0) 72%); filter:blur(2px); z-index:0; }
 .butty-img { position:relative; z-index:1; width:76px; height:76px; object-fit:contain; flex-shrink:0; filter:drop-shadow(0 0 10px rgba(255,255,255,.9)) drop-shadow(0 6px 10px rgba(181,121,142,.25)); animation:rise .5s var(--ease) both; }
@@ -907,7 +938,7 @@ button.chal-tile:active { transform:scale(.94); }
 .br-label { flex:1; font-size:12.5px; font-weight:600; color:var(--ink); }
 .br-note { font-size:11px; color:var(--soft); }
 
-.butty-summary { position:relative; display:flex; align-items:center; gap:14px; background:linear-gradient(135deg,rgba(251,220,196,.4),rgba(217,207,240,.35)); cursor:pointer; overflow:hidden; }
+.butty-summary { position:relative; display:flex; align-items:center; gap:14px; background:linear-gradient(135deg,color-mix(in srgb,var(--bm1,#FBDCC4) 50%,transparent),color-mix(in srgb,var(--bm2,#D9CFF0) 45%,transparent)); cursor:pointer; overflow:hidden; }
 .bs-glow { position:absolute; left:-10px; top:50%; width:100px; height:100px; transform:translateY(-50%); background:radial-gradient(circle, rgba(255,255,255,.9) 0%, rgba(255,241,246,.5) 45%, rgba(255,241,246,0) 72%); filter:blur(2px); z-index:0; }
 .bs-img { position:relative; z-index:1; width:60px; height:60px; object-fit:contain; flex-shrink:0; filter:drop-shadow(0 0 9px rgba(255,255,255,.9)) drop-shadow(0 4px 8px rgba(181,121,142,.22)); }
 .bs-text { position:relative; z-index:1; flex:1; }
