@@ -1848,6 +1848,72 @@ function suggestToday() {
 }
 
 // ---------- Butty: apresentação interativa (conta nova) ----------
+// ---------- Novidades (aparece uma vez a cada pessoa depois de uma atualização) ----------
+// Para anunciar uma atualização nova: muda NEWS_VERSION e a lista NEWS.
+const NEWS_VERSION = '2026-11-butty-mes';
+const NEWS = [
+  { em: '🍂', title: 'A Butty muda todos os meses', text: 'Agora a Butty veste-se a rigor conforme o mês: outono em novembro, Natal em dezembro, e por aí fora. Com frases novas para cada mês!' },
+  { em: '🎂', title: 'Festa de aniversário', text: 'No dia dos teus anos há uma surpresa especial à tua espera no Início. (Confirma a tua data de nascimento no Perfil!)' },
+  { em: '🌙', title: 'A tua escolha fica o dia todo', text: 'Quando escolhes "Hoje descanso" ou "Sim, bora!", a app já não volta a perguntar durante esse dia.' }
+];
+const NEWS_KEY = () => `pt-news-${uid()}`;
+function newsSeen() { try { return localStorage.getItem(NEWS_KEY()) === NEWS_VERSION; } catch { return true; } }
+function markNewsSeen() { try { localStorage.setItem(NEWS_KEY(), NEWS_VERSION); } catch { /* ignora */ } }
+
+function openNews(onFinish) {
+  markNewsSeen();
+  const root = $('welcome');
+  const appEl = $('app');
+  const splashEl2 = $('splash');
+  const opener = document.activeElement;
+  root.hidden = false;
+  root.classList.remove('leaving');
+  appEl.inert = true; splashEl2.inert = true;
+  document.body.classList.add('wl-open');
+  root.innerHTML = `
+    <div class="wl-bg" aria-hidden="true"><i class="wl-b1"></i><i class="wl-b2"></i><i class="wl-b3"></i></div>
+    <div class="wl-panel" role="dialog" aria-modal="true" aria-labelledby="nw-title">
+      <div class="wl-top">
+        <div class="wl-step">Novidades</div>
+        <button type="button" class="wl-close" id="nw-close" aria-label="Fechar novidades">${icon('x', 18)}</button>
+      </div>
+      <div class="wl-stage"><div class="wl-page in-next">
+        <div class="wl-hero bi-hero">
+          <div class="bi-img-wrap"><div class="bi-glow" aria-hidden="true"></div><img class="bi-hero-img" src="${buttyMonthImg('face-love')}" alt="Butty"></div>
+          <h2 class="wl-h" id="nw-title" tabindex="-1">Há novidades na app! ✨</h2>
+          <p class="wl-sub">A Butty esteve ocupada. Vê o que mudou:</p>
+          <ul class="news-list">
+            ${NEWS.map((n, i) => `<li style="--n:${i}"><span class="news-em" aria-hidden="true">${n.em}</span><div><b>${esc(n.title)}</b><p>${esc(n.text)}</p></div></li>`).join('')}
+          </ul>
+        </div>
+      </div></div>
+      <div class="wl-nav"><button type="button" class="save-btn" id="nw-ok">Adorei!</button></div>
+    </div>`;
+  const finish = () => {
+    document.removeEventListener('keydown', onKey, true);
+    root.classList.add('leaving');
+    setTimeout(() => {
+      root.hidden = true; root.classList.remove('leaving'); root.innerHTML = '';
+      appEl.inert = false; splashEl2.inert = false;
+      document.body.classList.remove('wl-open');
+      if (opener && opener.focus && document.contains(opener)) opener.focus({ preventScroll: true });
+      if (onFinish) onFinish();
+    }, 380);
+  };
+  function onKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); finish(); return; }
+    if (e.key !== 'Tab') return;
+    const f = [...root.querySelectorAll('button')];
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+  document.addEventListener('keydown', onKey, true);
+  root.querySelector('#nw-ok').addEventListener('click', finish);
+  root.querySelector('#nw-close').addEventListener('click', finish);
+  setTimeout(() => { root.querySelector('#nw-title')?.focus({ preventScroll: true }); const w = root.querySelector('.bi-img-wrap'); if (w) { const r = w.getBoundingClientRect(); sparkle(r.left + r.width / 2, r.top + r.height / 2, 10); } }, 250);
+}
+
 function openButtyIntro(onFinish) {
   const root = $('welcome');
   const appEl = $('app');
@@ -2988,12 +3054,17 @@ async function startSession(profile, pin) {
   $('app').hidden = false;
   render(true);
   window.scrollTo(0, 0);
-  if (birthdayToday()) setTimeout(() => celebrateBirthday(), 600);
-  else if (!outdated && !goalFor(monthKeyOf(new Date()))) setTimeout(() => toast('Novo mês, nova meta! Define-a na aba Progresso.'), 900);
+  const afterNews = () => {
+    if (birthdayToday()) setTimeout(() => celebrateBirthday(), 300);
+    else if (!outdated && !goalFor(monthKeyOf(new Date()))) setTimeout(() => toast('Novo mês, nova meta! Define-a na aba Progresso.'), 600);
+  };
 
   if (profileOf().new_account && !planCfg().done && !isGaby()) {
+    markNewsSeen(); // conta nova: não precisa de ver as novidades
     openButtyIntro(() => startWelcome('first')); // conta nova: conhece a Butty e depois as boas-vindas do plano
-  }
+  } else if (!newsSeen()) {
+    setTimeout(() => openNews(afterNews), 500);
+  } else afterNews();
   splashEl.classList.add('leaving');
   clearTimeout(leaveTimer);
   leaveTimer = setTimeout(() => { splashEl.hidden = true; splashEl.classList.remove('leaving'); }, 520);

@@ -58,6 +58,8 @@ Quem cria conta nova conhece a Butty numa apresentação interativa curta, antes
 
 **Aniversário:** no dia de anos (data de nascimento do Perfil) aparece um cartão especial de parabéns no Início, com confettis, e a Butty veste-se a rigor.
 
+**Novidades:** depois de uma atualização, cada pessoa vê uma vez uma janela "Há novidades na app!". Para anunciar uma atualização nova, muda `NEWS_VERSION` e a lista `NEWS` em `js/app.js`.
+
 **"Hoje descanso" / "Sim, bora!":** a escolha fica guardada durante o dia todo, mesmo que a app feche e volte a abrir.
 
 ### Treino da Gabriela
