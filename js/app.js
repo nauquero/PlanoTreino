@@ -15,7 +15,8 @@ import { MUSCLES, MUSCLE_LABEL, OBJECTIVES, OBJECTIVE_KEYS, OBJECTIVE_PLAN, plan
 import { openWelcome, WELCOME_PAGES, EDIT_PAGES, OBJECTIVE_PAGES } from './welcome.js';
 import { GENDERS, STATUSES, PHASES as CYCLE_PHASES, cycleDayInfo, lateDays, nextPeriod, pregnancyInfo, ageOf, diffDays } from './cycle.js';
 import { computeSeeds, challengeProgress, moodSeeds, SEED_GUIDE } from './gamify.js';
-import { buttyMonth, buttyMonthImg, isBirthday, BIRTHDAY_LINES } from './butty-months.js';
+import { buttyMonth, buttyMonthImg, buttyDayImg, buttyMonthHero, buttyMonthFace, isBirthday, BIRTHDAY_LINES } from './butty-months.js';
+import { monthRecap, buttyMonthOpinion, recapFace, yearRecap, yearHighlights, buttyYearOpinion, dueMonthRecap, dueYearRecap, monthName } from './recap.js';
 
 // ---------- estado ----------
 const state = {
@@ -1470,6 +1471,11 @@ function baseQuip() {
 
 // Cores e decoração do mês no cartão da Butty
 function monthStyle(m) { return `--bm1:${m.c1};--bm2:${m.c2}`; }
+// Acessório em emoji por cima da Butty: só nos meses sem desenhos próprios (os desenhos já vêm vestidos a rigor).
+function accHtml() {
+  const em = birthdayToday() ? '🥳' : buttyMonth().art ? '' : buttyMonth().acc;
+  return em ? `<span class="butty-acc" aria-hidden="true">${em}</span>` : '';
+}
 function monthDecoHtml(deco) {
   return `<span class="butty-deco" aria-hidden="true">${deco.map((e, i) => `<span class="bd d${i + 1}">${e}</span>`).join('')}</span>`;
 }
@@ -1596,8 +1602,8 @@ function buttyHtml() {
     ${monthDecoHtml(bday ? ['🎈', '🎁', '🎊'] : m.deco)}
     <div class="butty-head">
       <div class="butty-avatar">
-        <img class="butty-img" src="${buttyMonthImg(prog.cur.img)}" alt="${esc(m.title)}, a mascote">
-        <span class="butty-acc" aria-hidden="true">${bday ? '🥳' : m.acc}</span>
+        <img class="butty-img" src="${buttyDayImg(prog.cur.img)}" alt="${esc(m.title)}, a mascote">
+        ${accHtml()}
       </div>
       <div class="butty-text">
         <div class="butty-lvl-row"><span class="butty-lvl-chip">Nível ${prog.level}</span>${streak > 1 ? `<span class="butty-streak-chip">${icon('flame', 12)}${streak} dias</span>` : ''}</div>
@@ -1850,9 +1856,11 @@ function suggestToday() {
 // ---------- Butty: apresentação interativa (conta nova) ----------
 // ---------- Novidades (aparece uma vez a cada pessoa depois de uma atualização) ----------
 // Para anunciar uma atualização nova: muda NEWS_VERSION e a lista NEWS.
-const NEWS_VERSION = '2026-11-butty-mes';
+const NEWS_VERSION = '2026-11-butty-resumos';
 const NEWS = [
-  { em: '🍂', title: 'A Butty muda todos os meses', text: 'Agora a Butty veste-se a rigor conforme o mês: outono em novembro, Natal em dezembro, e por aí fora. Com frases novas para cada mês!' },
+  { em: '🍂', title: 'A Butty muda todos os meses', text: 'Agora a Butty veste-se a rigor conforme o mês, com desenhos novos todos os dias: outono em novembro, Natal em dezembro, inverno em janeiro e muito amor em fevereiro.' },
+  { em: '📅', title: 'Resumo do mês', text: 'No fim de cada mês, a Butty mostra-te o que treinaste (treinos, recordes, sequências, sono e água) e dá a opinião dela.' },
+  { em: '🎆', title: 'Resumo do ano', text: 'No fim do ano há um resumo especial, mês a mês, com os teus pontos altos. Podes rever os resumos na aba Progresso.' },
   { em: '🎂', title: 'Festa de aniversário', text: 'No dia dos teus anos há uma surpresa especial à tua espera no Início. (Confirma a tua data de nascimento no Perfil!)' },
   { em: '🌙', title: 'A tua escolha fica o dia todo', text: 'Quando escolhes "Hoje descanso" ou "Sim, bora!", a app já não volta a perguntar durante esse dia.' }
 ];
@@ -1860,8 +1868,9 @@ const NEWS_KEY = () => `pt-news-${uid()}`;
 function newsSeen() { try { return localStorage.getItem(NEWS_KEY()) === NEWS_VERSION; } catch { return true; } }
 function markNewsSeen() { try { localStorage.setItem(NEWS_KEY(), NEWS_VERSION); } catch { /* ignora */ } }
 
-function openNews(onFinish) {
-  markNewsSeen();
+// Janela por cima da app (novidades, resumos): mesmo aspeto da apresentação da Butty.
+// inner = conteúdo da página; buttons = [{ id, label, primary }] (o primeiro com primary fecha por defeito).
+function openPanel({ step, closeLabel, inner, buttons, onFinish, onOpen }) {
   const root = $('welcome');
   const appEl = $('app');
   const splashEl2 = $('splash');
@@ -1874,22 +1883,16 @@ function openNews(onFinish) {
     <div class="wl-bg" aria-hidden="true"><i class="wl-b1"></i><i class="wl-b2"></i><i class="wl-b3"></i></div>
     <div class="wl-panel" role="dialog" aria-modal="true" aria-labelledby="nw-title">
       <div class="wl-top">
-        <div class="wl-step">Novidades</div>
-        <button type="button" class="wl-close" id="nw-close" aria-label="Fechar novidades">${icon('x', 18)}</button>
+        <div class="wl-step">${esc(step)}</div>
+        <button type="button" class="wl-close" id="nw-close" aria-label="${esc(closeLabel)}">${icon('x', 18)}</button>
       </div>
-      <div class="wl-stage"><div class="wl-page in-next">
-        <div class="wl-hero bi-hero">
-          <div class="bi-img-wrap"><div class="bi-glow" aria-hidden="true"></div><img class="bi-hero-img" src="${buttyMonthImg('face-love')}" alt="Butty"></div>
-          <h2 class="wl-h" id="nw-title" tabindex="-1">Há novidades na app! ✨</h2>
-          <p class="wl-sub">A Butty esteve ocupada. Vê o que mudou:</p>
-          <ul class="news-list">
-            ${NEWS.map((n, i) => `<li style="--n:${i}"><span class="news-em" aria-hidden="true">${n.em}</span><div><b>${esc(n.title)}</b><p>${esc(n.text)}</p></div></li>`).join('')}
-          </ul>
-        </div>
-      </div></div>
-      <div class="wl-nav"><button type="button" class="save-btn" id="nw-ok">Adorei!</button></div>
+      <div class="wl-stage"><div class="wl-page in-next">${inner}</div></div>
+      <div class="wl-nav">${buttons.map((b) => `<button type="button" class="${b.primary ? 'save-btn' : 'log-cancel'}" id="${b.id}">${esc(b.label)}</button>`).join('')}</div>
     </div>`;
-  const finish = () => {
+  let done = false;
+  const finish = (next) => {
+    if (done) return;
+    done = true;
     document.removeEventListener('keydown', onKey, true);
     root.classList.add('leaving');
     setTimeout(() => {
@@ -1897,7 +1900,8 @@ function openNews(onFinish) {
       appEl.inert = false; splashEl2.inert = false;
       document.body.classList.remove('wl-open');
       if (opener && opener.focus && document.contains(opener)) opener.focus({ preventScroll: true });
-      if (onFinish) onFinish();
+      if (typeof next === 'function') next();
+      else if (onFinish) onFinish();
     }, 380);
   };
   function onKey(e) {
@@ -1909,9 +1913,129 @@ function openNews(onFinish) {
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   }
   document.addEventListener('keydown', onKey, true);
-  root.querySelector('#nw-ok').addEventListener('click', finish);
-  root.querySelector('#nw-close').addEventListener('click', finish);
-  setTimeout(() => { root.querySelector('#nw-title')?.focus({ preventScroll: true }); const w = root.querySelector('.bi-img-wrap'); if (w) { const r = w.getBoundingClientRect(); sparkle(r.left + r.width / 2, r.top + r.height / 2, 10); } }, 250);
+  buttons.forEach((b) => root.querySelector(`#${b.id}`).addEventListener('click', () => finish(b.then)));
+  root.querySelector('#nw-close').addEventListener('click', () => finish());
+  setTimeout(() => {
+    root.querySelector('#nw-title')?.focus({ preventScroll: true });
+    const w = root.querySelector('.bi-img-wrap');
+    if (w) { const r = w.getBoundingClientRect(); sparkle(r.left + r.width / 2, r.top + r.height / 2, 10); }
+    if (onOpen) onOpen(root);
+  }, 250);
+}
+
+function openNews(onFinish) {
+  markNewsSeen();
+  openPanel({
+    step: 'Novidades', closeLabel: 'Fechar novidades', onFinish,
+    inner: `<div class="wl-hero bi-hero">
+      <div class="bi-img-wrap"><div class="bi-glow" aria-hidden="true"></div><img class="bi-hero-img" src="${buttyMonthImg('face-love')}" alt="Butty"></div>
+      <h2 class="wl-h" id="nw-title" tabindex="-1">Há novidades na app! ✨</h2>
+      <p class="wl-sub">A Butty esteve ocupada. Vê o que mudou:</p>
+      <ul class="news-list">
+        ${NEWS.map((n, i) => `<li style="--n:${i}"><span class="news-em" aria-hidden="true">${n.em}</span><div><b>${esc(n.title)}</b><p>${esc(n.text)}</p></div></li>`).join('')}
+      </ul>
+    </div>`,
+    buttons: [{ id: 'nw-ok', label: 'Adorei!', primary: true }]
+  });
+}
+
+// ---------- Resumos da Butty (fim do mês e fim do ano) ----------
+const RECAP_KEY = (k) => `pt-recap-${uid()}-${k}`;
+function recapSeen(k) { try { return !!localStorage.getItem(RECAP_KEY(k)); } catch { return true; } }
+function markRecapSeen(k) { try { localStorage.setItem(RECAP_KEY(k), '1'); } catch { /* ignora */ } }
+
+function recapData() {
+  const d = state.data;
+  return { logs: d.logs, gymDays: d.gymDays, sleep: d.sleep, meals: d.meals, waters: d.waters, restDays: d.restDays, moods: d.moods };
+}
+const recapOpts = () => ({ today: today(), groupOf, groupLabel, prDays: buttyPRDays() });
+const kgText = (kg) => (kg >= 10000 ? `${ptNum(kg / 1000, 1)} t` : `${kg.toLocaleString('pt-PT')} kg`);
+
+function recapTile(em, value, label, k) {
+  return `<div class="rc-tile" style="--n:${k}"><span class="rc-em" aria-hidden="true">${em}</span><b>${value}</b><small>${esc(label)}</small></div>`;
+}
+
+function opinionHtml(lines, face) {
+  return `<div class="rc-opinion" style="--n:7">
+    <img class="rc-op-img" src="${face}" alt="">
+    <div class="rc-op-text"><div class="rc-op-kicker">A opinião da Butty</div>${lines.map((l) => `<p>${esc(l)}</p>`).join('')}</div>
+  </div>`;
+}
+
+function openMonthRecap(key, onFinish, { then } = {}) {
+  markRecapSeen(key);
+  const r = monthRecap(recapData(), key, { ...recapOpts(), goal: goalFor(key) });
+  const name = monthName(key);
+  const year = key.slice(0, 4);
+  const tiles = [
+    recapTile('🗓️', r.goal ? `${r.sessions}/${r.goal}` : r.sessions, r.goal ? (r.goalHit ? 'treinos · meta cumprida!' : 'treinos da meta') : (r.sessions === 1 ? 'treino' : 'treinos'), 0),
+    recapTile('🔥', r.longestRun, r.longestRun === 1 ? 'dia seguido, no máximo' : 'dias seguidos, no máximo', 1),
+    recapTile('🏋️', r.prs, r.prs === 1 ? 'recorde de carga' : 'recordes de carga', 2),
+    recapTile('✨', r.perfect, r.perfect === 1 ? 'dia em pleno' : 'dias em pleno', 3)
+  ];
+  if (r.volume > 0) tiles.push(recapTile('⚖️', kgText(r.volume), 'levantados (peso × reps)', 4));
+  if (r.minutes > 0) tiles.push(recapTile('⏱️', r.minutes, 'min de cardio e desporto', 5));
+  if (tiles.length % 2) tiles.push(recapTile('💧', r.waterDays, r.waterDays === 1 ? 'dia com a água em dia' : 'dias com a água em dia', 5));
+  const facts = [];
+  if (r.favExercise) facts.push(['💪', 'Exercício favorito', `${r.favExercise.name} (${r.favExercise.count} ${r.favExercise.count === 1 ? 'dia' : 'dias'})`]);
+  if (r.topGroup && r.topGroup.name !== 'outros') facts.push(['🎯', 'Mais treinado', r.topGroup.label]);
+  if (r.sleepNights) facts.push(['🌙', 'Sono', `${ptNum(r.sleepAvg, 1)} h por noite, em média`]);
+  if (r.restDays) facts.push(['🛋️', 'Descanso', `${r.restDays} ${r.restDays === 1 ? 'dia' : 'dias'} de descanso marcados`]);
+  const face = r.level === 'goal' || r.level === 'great' ? buttyMonthHero(r.monthIdx, 'face-laugh') : buttyMonthFace(r.monthIdx, recapFace(r.level));
+  const buttons = then
+    ? [{ id: 'rc-next', label: 'Ver o meu ano ✨', primary: true, then }, { id: 'rc-ok', label: 'Fechar' }]
+    : [{ id: 'rc-ok', label: 'Bora para o próximo mês!', primary: true }];
+  openPanel({
+    step: `Resumo de ${name.toLowerCase()}`, closeLabel: 'Fechar resumo', onFinish, buttons,
+    inner: `<div class="wl-hero bi-hero rc">
+      <div class="bi-img-wrap"><div class="bi-glow" aria-hidden="true"></div><img class="bi-hero-img" src="${buttyMonthHero(r.monthIdx)}" alt="Butty de ${esc(name.toLowerCase())}"></div>
+      <h2 class="wl-h" id="nw-title" tabindex="-1">O teu ${esc(name.toLowerCase())} ${year} 🦌</h2>
+      <p class="wl-sub">${r.sessions ? `Fizeste <b>${r.sessions}</b> ${r.sessions === 1 ? 'treino' : 'treinos'} em ${r.days} dias. Vê o que a Butty apontou:` : 'A Butty fez as contas do teu mês:'}</p>
+      <div class="rc-grid">${tiles.join('')}</div>
+      ${facts.length ? `<ul class="news-list rc-facts">${facts.map(([em, t, v], i) => `<li style="--n:${i + 4}"><span class="news-em" aria-hidden="true">${em}</span><div><b>${esc(t)}</b><p>${esc(v)}</p></div></li>`).join('')}</ul>` : ''}
+      ${opinionHtml(buttyMonthOpinion(r), face)}
+    </div>`,
+    onOpen: () => { if (r.goalHit || r.level === 'great') { const w = $('welcome').querySelector('.bi-img-wrap'); if (w) { const b = w.getBoundingClientRect(); burst(b.left + b.width / 2, b.top + b.height / 2, 40); popSuccess(); } } }
+  });
+}
+
+function openYearRecap(year, onFinish) {
+  markRecapSeen(String(year));
+  const r = yearRecap(recapData(), year, { ...recapOpts(), goals: state.data.goals });
+  const rows = r.months.map((m) => `<li class="rc-mrow${m.future ? ' future' : ''}" style="--n:${m.idx}">
+      <img src="${buttyMonthHero(m.idx, 'face-joy')}" alt="">
+      <span class="rc-mname">${esc(m.name.slice(0, 3))}</span>
+      <span class="rc-bar"><i style="--w:${Math.round((m.sessions / r.maxSessions) * 100)}%"></i></span>
+      <b>${m.future ? '–' : m.sessions}</b>
+      <span class="rc-goal" title="${m.goalHit ? 'Meta cumprida' : ''}">${m.goalHit ? '🎯' : m.prs ? '🏋️' : ''}</span>
+    </li>`).join('');
+  const hl = yearHighlights(r);
+  openPanel({
+    step: `O teu ${year}`, closeLabel: 'Fechar resumo do ano', onFinish,
+    buttons: [{ id: 'rc-ok', label: `Bora para ${year + 1}! 🎉`, primary: true }],
+    inner: `<div class="wl-hero bi-hero rc">
+      <div class="bi-img-wrap big"><div class="bi-glow" aria-hidden="true"></div><img class="bi-hero-img" src="${buttyMonthFace(11, 'face-laugh')}" alt="Butty"></div>
+      <h2 class="wl-h" id="nw-title" tabindex="-1">O teu ano de ${year} 🎆</h2>
+      <p class="wl-sub">${r.sessions ? `<b>${r.sessions}</b> ${r.sessions === 1 ? 'treino' : 'treinos'} ao longo do ano. Mês a mês:` : 'A Butty fez as contas do teu ano:'}</p>
+      <ul class="rc-months" aria-label="Treinos por mês">${rows}</ul>
+      <p class="rc-legend">🎯 meta cumprida · 🏋️ recorde de carga</p>
+      ${hl.length ? `<h3 class="rc-h">Pontos altos</h3><ul class="news-list rc-facts">${hl.map((h, i) => `<li style="--n:${i}"><span class="news-em" aria-hidden="true">${h.em}</span><div><b>${esc(h.title)}</b><p>${esc(h.text)}</p></div></li>`).join('')}</ul>` : ''}
+      ${opinionHtml(buttyYearOpinion(r), buttyMonthFace(0, 'face-love'))}
+    </div>`,
+    onOpen: () => { const w = $('welcome').querySelector('.bi-img-wrap'); if (w && r.sessions) { const b = w.getBoundingClientRect(); burst(b.left + b.width / 2, b.top + b.height / 2, 50); popSuccess(); } }
+  });
+}
+
+// Abre os resumos que estiverem para ver (mês, e no fim do ano também o ano) e depois segue.
+function maybeOpenRecaps(next) {
+  const key = dueMonthRecap();
+  const year = dueYearRecap();
+  const showMonth = key && !recapSeen(key) && monthRecap(recapData(), key, recapOpts()).any;
+  const showYear = year && !recapSeen(String(year)) && yearRecap(recapData(), year, recapOpts()).any;
+  if (showMonth && showYear) openMonthRecap(key, next, { then: () => openYearRecap(year, next) });
+  else if (showMonth) openMonthRecap(key, next);
+  else if (showYear) openYearRecap(year, next);
+  else next();
 }
 
 function openButtyIntro(onFinish) {
@@ -2160,7 +2284,7 @@ function buttySummaryHtml() {
   const prog = buttyProgress();
   return `<div class="card butty-summary tilt" data-action="go-page" data-page="inicio" style="${monthStyle(buttyMonth())}">
     <div class="bs-glow" aria-hidden="true"></div>
-    <div class="butty-avatar sm"><img class="bs-img" src="${buttyMonthImg(prog.cur.img)}" alt="Butty, a mascote"><span class="butty-acc" aria-hidden="true">${birthdayToday() ? '🥳' : buttyMonth().acc}</span></div>
+    <div class="butty-avatar sm"><img class="bs-img" src="${buttyDayImg(prog.cur.img)}" alt="Butty, a mascote">${accHtml()}</div>
     <div class="bs-text">
       <h2>Nível ${prog.level} · ${esc(prog.cur.name)}</h2>
       ${buttyWaveBarHtml(prog.pct, { small: true })}
@@ -2485,7 +2609,7 @@ function buttyProgressHtml() {
   const prog = buttyProgress();
   return `<div class="card butty-summary tilt" data-action="go-page" data-page="inicio" style="${monthStyle(buttyMonth())}">
     <div class="bs-glow" aria-hidden="true"></div>
-    <div class="butty-avatar sm"><img class="bs-img" src="${buttyMonthImg(prog.cur.img)}" alt="Butty, a mascote"><span class="butty-acc" aria-hidden="true">${birthdayToday() ? '🥳' : buttyMonth().acc}</span></div>
+    <div class="butty-avatar sm"><img class="bs-img" src="${buttyDayImg(prog.cur.img)}" alt="Butty, a mascote">${accHtml()}</div>
     <div class="bs-text">
       <h2>Como anda a Butty · Nível ${prog.level}</h2>
       ${buttyWaveBarHtml(prog.pct, { small: true })}
@@ -2548,6 +2672,8 @@ function renderProgresso() {
       <button data-action="cal-next" aria-label="Mês seguinte"${isCurrent ? ' disabled' : ''}>${icon('chevron-right', 18)}</button>
     </div>
 
+    ${recapButtonsHtml(key, year, isCurrent)}
+
     <div class="card story tilt ${sum.verdict}">
       <div class="story-head"><span class="story-badge">${icon(VERDICT_ICON[sum.verdict], 22)}</span><h2 class="story-title">${esc(story.title)}</h2></div>
       ${story.lines.map((l) => `<p>${esc(l)}</p>`).join('')}
@@ -2583,6 +2709,14 @@ function renderProgresso() {
     ${donutHtml(key)}
 
     ${bestsHtml}`;
+}
+
+// Botões para rever os resumos da Butty de um mês já acabado (ou a acabar) e do ano.
+function recapButtonsHtml(key, year, isCurrent) {
+  const btns = [];
+  if (!isCurrent || dueMonthRecap() === key) btns.push(`<button class="recap-btn" data-action="open-recap" data-key="${key}"><img src="${buttyMonthHero(Number(key.slice(5, 7)) - 1, 'face-love')}" alt=""><span><b>Resumo de ${esc(monthName(key).toLowerCase())}</b><small>O que treinaste e a opinião da Butty</small></span>${icon('chevron-right', 16)}</button>`);
+  if (year < new Date().getFullYear() || dueYearRecap() === year) btns.push(`<button class="recap-btn year" data-action="open-year" data-year="${year}"><span class="recap-em" aria-hidden="true">🎆</span><span><b>O teu ano de ${year}</b><small>Resumo mês a mês e pontos altos</small></span>${icon('chevron-right', 16)}</button>`);
+  return btns.length ? `<div class="recap-btns">${btns.join('')}</div>` : '';
 }
 
 function goalCardHtml(key, goal) {
@@ -2770,6 +2904,8 @@ function onClick(ev) {
     }
     case 'home-rest': saveRestDay(); return;
     case 'bday-party': celebrateBirthday(true); return;
+    case 'open-recap': openMonthRecap(d.key); return;
+    case 'open-year': openYearRecap(Number(d.year)); return;
     case 'home-goal': setMonthGoal(el); return;
     case 'start-plan': startWelcome('first'); return;
     case 'edit-plan': startWelcome('edit'); return;
@@ -3063,8 +3199,8 @@ async function startSession(profile, pin) {
     markNewsSeen(); // conta nova: não precisa de ver as novidades
     openButtyIntro(() => startWelcome('first')); // conta nova: conhece a Butty e depois as boas-vindas do plano
   } else if (!newsSeen()) {
-    setTimeout(() => openNews(afterNews), 500);
-  } else afterNews();
+    setTimeout(() => openNews(() => maybeOpenRecaps(afterNews)), 500);
+  } else setTimeout(() => maybeOpenRecaps(afterNews), 500);
   splashEl.classList.add('leaving');
   clearTimeout(leaveTimer);
   leaveTimer = setTimeout(() => { splashEl.hidden = true; splashEl.classList.remove('leaving'); }, 520);

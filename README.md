@@ -54,7 +54,9 @@ A aba "Alimentação" passou a chamar-se "Saúde" e agora também tem o registo 
 
 Quem cria conta nova conhece a Butty numa apresentação interativa curta, antes das perguntas do plano de treino.
 
-**Butty do mês:** a Butty muda de visual todos os meses (acessório, decoração, cores e frases próprias: Natal em dezembro, Halloween em outubro, etc.). Os temas estão em `js/butty-months.js`. Para usar desenhos próprios de um mês, põe a imagem em `icons/butty/meses/` com o número do mês à frente (ex.: `12-face-joy.webp`) e acrescenta o nome (`'face-joy'`) à lista `imgs` desse mês.
+**Butty do mês:** a Butty muda de visual todos os meses (decoração, cores e frases próprias: Natal em dezembro, Halloween em outubro, etc.). Os temas estão em `js/butty-months.js`. Os meses com desenhos próprios (novembro, dezembro, janeiro e fevereiro) mostram um desenho diferente em cada dia. Os desenhos estão em `icons/butty/meses/` com o nome `MM-N.webp` (ex.: `12-3.webp` = 3.º desenho de dezembro). Para juntar desenhos a outro mês, põe lá os ficheiros e preenche `art` desse mês (`count` = quantos há, `hero` = o que aparece nos resumos, `faces` = que desenho substitui cada cara da Butty). Meses sem desenhos usam as caras normais com um acessório em emoji.
+
+**Resumos da Butty:** no último dia do mês (a partir das 18h) e até ao dia 10 do mês seguinte, a app mostra uma vez o resumo do mês: treinos (e meta), maior sequência, recordes de carga, dias em pleno, peso levantado, cardio, exercício favorito, sono e a opinião da Butty. De 31 de dezembro (a partir das 18h) até 15 de janeiro mostra também o resumo do ano, mês a mês e com os pontos altos. Os resumos de meses e anos passados podem ser revistos na aba Progresso. Os cálculos estão em `js/recap.js`.
 
 **Aniversário:** no dia de anos (data de nascimento do Perfil) aparece um cartão especial de parabéns no Início, com confettis, e a Butty veste-se a rigor.
 
