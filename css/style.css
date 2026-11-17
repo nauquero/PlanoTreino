@@ -336,6 +336,7 @@ button { font-family:inherit; color:inherit; }
 .set-n { flex:0 0 58px; font-size:11px; font-weight:600; color:var(--pinkDark); }
 .set-row input { flex:1; min-width:0; font-family:'Poppins',sans-serif; font-size:16px; padding:9px 8px; border-radius:12px; border:1.5px solid var(--line); text-align:center; color:var(--ink); background:rgba(255,255,255,.9); transition:border-color .2s, box-shadow .2s; }
 .set-row input:focus { outline:none; border-color:var(--pink); box-shadow:0 0 0 4px rgba(245,198,216,.4); }
+.set-row input::placeholder { color:var(--pink); opacity:1; }
 .add-set { display:inline-flex; align-items:center; gap:6px; margin-bottom:10px; padding:7px 14px; border-radius:999px; border:1.5px dashed var(--pink); background:rgba(255,255,255,.6); color:var(--pinkDark); font-weight:600; font-size:12px; cursor:pointer; transition:transform .15s var(--ease); }
 .add-set:active { transform:scale(.93); }
 .set-chip { display:inline-block; padding:3px 9px; border-radius:999px; background:#FCEEF2; color:var(--pinkDeep); font-size:11px; font-weight:600; white-space:nowrap; }

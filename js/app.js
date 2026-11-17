@@ -1607,13 +1607,12 @@ function buttyHtml() {
       </div>
       <div class="butty-text">
         <div class="butty-lvl-row"><span class="butty-lvl-chip">Nível ${prog.level}</span>${streak > 1 ? `<span class="butty-streak-chip">${icon('flame', 12)}${streak} dias</span>` : ''}</div>
-        <h2>${esc(prog.cur.name)}</h2>
         <span class="butty-month-chip">${bday ? '🎂 Butty de aniversário' : `${m.acc} ${esc(m.title)}`}</span>
       </div>
     </div>
     <p class="butty-bubble">${esc(buttyQuip())}</p>
     ${buttyWaveBarHtml(prog.pct)}
-    <div class="butty-xp-label">${prog.inLevel}/${prog.needed} sementes para o nível ${prog.level + 1} (${esc(prog.next.name)}) · ${icon('leaf', 11)} ${prog.xp} sementes ao todo</div>
+    <div class="butty-xp-label">${prog.inLevel}/${prog.needed} sementes para o nível ${prog.level + 1} · ${icon('leaf', 11)} ${prog.xp} sementes ao todo</div>
     ${challengesHtml()}
     ${buttyBadgesHtml(prog.xp)}
   </div>`;
@@ -2185,6 +2184,17 @@ function startWelcome(mode = 'edit') {
 // ---------- Perfil ----------
 const profileOf = () => state.data.profile || {};
 const displayName = () => profileOf().first_name || state.user.name;
+// "@" do perfil: nome + dia de nascimento + apelido, tudo junto e em minúsculas (ex.: @mariana21rodrigues).
+// Sem nome/apelido/data de nascimento preenchidos, mostra o identificador da conta.
+function userHandle() {
+  const p = profileOf();
+  const slug = (s) => (s || '').toString().trim().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+  const first = slug(p.first_name);
+  const last = slug(p.last_name);
+  const day = p.birth ? p.birth.slice(8, 10) : '';
+  return first && last && day ? `${first}${day}${last}` : state.user.id;
+}
 // Objetivo escolhido pela pessoa no perfil; se não escolheu, o da conta. Define as sugestões de alimentação, as mensagens
 // e a forma de treinar (repetições, descanso e cardio). Os músculos e o cardio vêm das escolhas das boas-vindas.
 const focusOf = () => { const o = profileOf().objective; return o && FOCUS[o] ? o : state.user.focus; };
@@ -2227,7 +2237,7 @@ function perfilHeroHtml() {
       <div class="avatar big ${state.user.tone}" aria-hidden="true">${esc(displayName()[0].toUpperCase())}</div>
       <div class="ph-text">
         <h2>${esc(full)}</h2>
-        <div class="ph-meta">${age !== null ? `${age} anos · ` : ''}@${esc(state.user.id)}</div>
+        <div class="ph-meta">${age !== null ? `${age} anos · ` : ''}@${esc(userHandle())}</div>
         <span class="goal-chip">${icon(o[4], 14)}${esc(o[0])}</span>
       </div>
     </div>`;
@@ -2286,7 +2296,7 @@ function buttySummaryHtml() {
     <div class="bs-glow" aria-hidden="true"></div>
     <div class="butty-avatar sm"><img class="bs-img" src="${buttyDayImg(prog.cur.img)}" alt="Butty, a mascote">${accHtml()}</div>
     <div class="bs-text">
-      <h2>Nível ${prog.level} · ${esc(prog.cur.name)}</h2>
+      <h2>Nível ${prog.level}</h2>
       ${buttyWaveBarHtml(prog.pct, { small: true })}
       <div class="bs-lvl-note">${prog.inLevel}/${prog.needed} sementes para o nível ${prog.level + 1}</div>
     </div>
