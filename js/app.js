@@ -1358,20 +1358,6 @@ function buttyStreak() {
   return n;
 }
 
-function buttyBadges(totalSeeds) {
-  const trainedDays = [...trainedDaySet()].filter((d) => d <= today()).length;
-  const sleepGood = state.data.sleep.filter((s) => Number(s.hours) >= 7).length;
-  const mealGood = state.data.meals.filter((m) => Number(m.ate) >= 1).length;
-  return [
-    { ic: 'star', label: 'Primeiras sementes', done: totalSeeds >= 1 },
-    { ic: 'flame', label: '7 dias seguidos em pleno', done: buttyStreak() >= 7 },
-    { ic: 'moon', label: '10 noites bem dormidas', done: sleepGood >= 10 },
-    { ic: 'leaf', label: '10 refeições em dia', done: mealGood >= 10 },
-    { ic: 'dumbbell', label: '20 treinos registados', done: trainedDays >= 20 },
-    { ic: 'trend', label: 'Primeira melhor carga', done: buttyPRCount() >= 1 }
-  ];
-}
-
 // Mensagens engraçadas da Butty, conforme o que já foi feito hoje.
 // Escolhe-se sempre a mesma para a mesma situação no mesmo dia (não muda a cada clique).
 const BUTTY_QUIPS = {
@@ -1510,10 +1496,6 @@ function celebrateBirthday(force = false) {
   if (!force) toast(`Feliz aniversário, ${displayName()}! 🎉`);
 }
 
-function buttyBadgesHtml(totalSeeds) {
-  return `<div class="butty-badges">${buttyBadges(totalSeeds).map((b) => `<span class="bb-chip${b.done ? ' on' : ''}" title="${esc(b.label)}">${icon(b.ic, 14)}</span>`).join('')}</div>`;
-}
-
 // Barrinha ondulada do nível da Butty: enche como água, com a onda sempre a mexer-se.
 function buttyWaveBarHtml(pct, { small = false } = {}) {
   return `<div class="butty-wave-bar${small ? ' sm' : ''}" aria-hidden="true" style="--pct:${pct}%">
@@ -1614,7 +1596,6 @@ function buttyHtml() {
     ${buttyWaveBarHtml(prog.pct)}
     <div class="butty-xp-label">${prog.inLevel}/${prog.needed} sementes para o nível ${prog.level + 1} · ${icon('leaf', 11)} ${prog.xp} sementes ao todo</div>
     ${challengesHtml()}
-    ${buttyBadgesHtml(prog.xp)}
   </div>`;
 }
 
